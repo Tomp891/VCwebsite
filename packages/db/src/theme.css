@@ -68,6 +68,14 @@
   font-family: var(--sans);
   color: var(--ink-soft);
 }
+.atlas-nav__tag--active {
+  background: rgba(43, 95, 90, 0.16);
+  color: var(--ink);
+}
+.atlas-nav__tag--active .atlas-nav__glyph,
+.atlas-nav__tag--active .atlas-nav__count {
+  color: var(--verdigris, #2b5f5a);
+}
 .atlas-nav__query {
   font-style: italic;
   color: var(--verdigris);

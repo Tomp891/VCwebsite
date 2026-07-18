@@ -12,7 +12,7 @@ import type { ChangeEvent } from "react";
 import { createLocalStore, Editor } from "@atlas/editor";
 import { Graph2D } from "@atlas/graph";
 import { createMockProvider, SuggestionsPanel } from "@atlas/ai";
-import { DatabaseView, NavTree } from "@atlas/db";
+import { DatabaseView, NavTree, allTags, blockTags } from "@atlas/db";
 import { ChatPanel, createRetriever } from "@atlas/rag";
 import { storeToGraphData } from "./graphData.js";
 import { downloadExport, importFromJson } from "./persistence.js";
@@ -52,7 +52,14 @@ export function App() {
   const [centerTab, setCenterTab] = useState<CenterTab>("page");
   const [graphMode, setGraphMode] = useState<GraphMode>("2d");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [activeTags, setActiveTags] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const toggleTag = useCallback((tag: string) => {
+    setActiveTags((cur) =>
+      cur.includes(tag) ? cur.filter((t) => t !== tag) : [...cur, tag],
+    );
+  }, []);
 
   // Expand the graph to fill the browser window. We use a fixed-overlay
   // (not the native Fullscreen API) because react-force-graph's canvas stops
@@ -79,6 +86,35 @@ export function App() {
     () => storeToGraphData(store.listBlocks(), store.listEdges()),
     [version],
   );
+
+  // Every tag in the store + a lookup of tags per block, for filtering.
+  const allTagList = useMemo(() => allTags(store.listBlocks()), [version]);
+  const tagsByBlock = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const b of store.listBlocks()) m.set(b.id, blockTags(b));
+    return m;
+  }, [version]);
+
+  // The graph, narrowed to nodes carrying an active tag (and edges between
+  // those nodes). No active tags = show everything.
+  const filteredGraphData = useMemo(() => {
+    if (activeTags.length === 0) return graphData;
+    const active = new Set(activeTags);
+    const visible = new Set(
+      graphData.nodes
+        .filter((n) => (tagsByBlock.get(n.id) ?? []).some((t) => active.has(t)))
+        .map((n) => n.id),
+    );
+    // react-force-graph may mutate link endpoints from ids to node objects.
+    const endId = (e: unknown): string =>
+      typeof e === "string" ? e : ((e as { id: string }).id ?? "");
+    return {
+      nodes: graphData.nodes.filter((n) => visible.has(n.id)),
+      links: graphData.links.filter(
+        (l) => visible.has(endId(l.source)) && visible.has(endId(l.target)),
+      ),
+    };
+  }, [graphData, activeTags, tagsByBlock]);
 
   // The page that owns the current selection (walk parentId), so selecting any
   // block/graph node opens its containing page in the editor.
@@ -113,7 +149,13 @@ export function App() {
       <aside className="pane pane-nav">
         <h1 className="brand">Atlas</h1>
         <div className="brand-sub">a cartography of thought</div>
-        <NavTree store={store} activeId={selectedPageId} onOpen={setSelectedId} />
+        <NavTree
+          store={store}
+          activeId={selectedPageId}
+          onOpen={setSelectedId}
+          activeTags={activeTags}
+          onTagToggle={toggleTag}
+        />
 
         <div className="io-bar">
           <button className="io-btn" onClick={() => downloadExport(store)} title="Download all notes as JSON">
@@ -181,16 +223,41 @@ export function App() {
           </div>
         </div>
         <div className={isFullscreen ? "graph-frame is-fullscreen" : "graph-frame"}>
+          {allTagList.length > 0 && (
+            <div className="graph-filter" role="group" aria-label="Filter graph by tag">
+              {allTagList.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  className={activeTags.includes(t) ? "tag-chip active" : "tag-chip"}
+                  aria-pressed={activeTags.includes(t)}
+                  onClick={() => toggleTag(t)}
+                >
+                  #{t}
+                </button>
+              ))}
+              {activeTags.length > 0 && (
+                <button
+                  type="button"
+                  className="tag-chip tag-chip--clear"
+                  onClick={() => setActiveTags([])}
+                  title="Clear tag filters"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          )}
           {graphMode === "2d" ? (
             <Graph2D
-              data={graphData}
+              data={filteredGraphData}
               selectedId={selectedId}
               onSelect={setSelectedId}
               clusterLabels={CLUSTER_LABELS}
             />
           ) : (
             <Suspense fallback={<div className="graph-loading">Unfolding the atlas…</div>}>
-              <Graph3D data={graphData} selectedId={selectedId} onSelect={setSelectedId} />
+              <Graph3D data={filteredGraphData} selectedId={selectedId} onSelect={setSelectedId} />
             </Suspense>
           )}
           {selectedPageId && (

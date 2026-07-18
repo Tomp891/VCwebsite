@@ -129,6 +129,44 @@ body {
 }
 .graph-fs-exit:hover { opacity: 1; }
 
+/* Tag filter chips overlaid on the graph (works docked + fullscreen). */
+.graph-filter {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: auto;
+  height: auto;
+  z-index: 8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: calc(100% - 130px);
+}
+.tag-chip {
+  width: auto;
+  height: auto;
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 8px;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--parchment) 88%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.tag-chip:hover { border-color: var(--pencil); color: var(--ink); }
+.tag-chip.active {
+  color: var(--parchment);
+  background: var(--verdigris);
+  border-color: var(--verdigris);
+}
+.tag-chip--clear {
+  color: var(--ink);
+  background: transparent;
+  border-style: dashed;
+}
+
 /* Floating preview card for the selected graph node. */
 .graph-preview {
   position: absolute;

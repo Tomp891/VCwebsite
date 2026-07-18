@@ -18,6 +18,10 @@ export interface NavTreeProps {
   activeId?: string;
   /** override the example saved queries. */
   savedQueries?: SavedQuery[];
+  /** Tags currently used to filter the graph/view. */
+  activeTags?: string[];
+  /** Toggle a tag on/off; when provided, tags render as filter buttons. */
+  onTagToggle?: (tag: string) => void;
 }
 
 function pageLabel(block: Block): string {
@@ -44,7 +48,7 @@ const DEFAULT_QUERIES: SavedQuery[] = [
  * Left-nav over the same blocks: root pages, the tag index, and 1-2 example
  * saved queries. Clicking a page (or a query result) calls `onOpen(id)`.
  */
-export function NavTree({ store, onOpen, activeId: controlledActiveId, savedQueries = DEFAULT_QUERIES }: NavTreeProps): JSX.Element {
+export function NavTree({ store, onOpen, activeId: controlledActiveId, savedQueries = DEFAULT_QUERIES, activeTags = [], onTagToggle }: NavTreeProps): JSX.Element {
   const blocks = useBlocks(store);
   const [localActiveId, setActiveId] = useState<string | null>(null);
   const activeId = controlledActiveId ?? localActiveId;
@@ -86,15 +90,34 @@ export function NavTree({ store, onOpen, activeId: controlledActiveId, savedQuer
       <div className="atlas-nav__group">
         <h3 className="atlas-db__section-title">Tags</h3>
         <ul className="atlas-nav__list">
-          {tags.map((t) => (
-            <li key={t}>
-              <span className="atlas-nav__item atlas-nav__tag">
+          {tags.map((t) => {
+            const isActive = activeTags.includes(t);
+            const cls = `atlas-nav__item atlas-nav__tag${isActive ? " atlas-nav__tag--active" : ""}`;
+            const inner = (
+              <>
                 <span className="atlas-nav__glyph">#</span>
                 {t}
                 <span className="atlas-nav__count">{tagCounts.get(t) ?? 0}</span>
-              </span>
-            </li>
-          ))}
+              </>
+            );
+            return (
+              <li key={t}>
+                {onTagToggle ? (
+                  <button
+                    type="button"
+                    className={cls}
+                    aria-pressed={isActive}
+                    title={isActive ? `Remove #${t} filter` : `Filter by #${t}`}
+                    onClick={() => onTagToggle(t)}
+                  >
+                    {inner}
+                  </button>
+                ) : (
+                  <span className={cls}>{inner}</span>
+                )}
+              </li>
+            );
+          })}
           {tags.length === 0 && <li className="atlas-empty">No tags yet.</li>}
         </ul>
       </div>
