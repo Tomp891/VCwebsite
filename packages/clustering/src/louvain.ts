@@ -53,9 +53,22 @@ function toWorkGraph(graph: WeightedGraph): { work: WorkGraph; index: Map<BlockI
   return { work: { n, adj, self, degree, m2 }, index };
 }
 
+/**
+ * Modularity gain (scaled by m) of placing a node with degree `ki` into a
+ * community that already has `neighWeight` edge weight to the node and total
+ * incident degree `sigmaTot` (with the node removed). The returned value equals
+ * `m · ΔQ`, so it preserves the argmax of the true modularity gain
+ *   ΔQ = neighWeight/m − (sigmaTot · ki)/(2m²)
+ * while avoiding an extra division. `m2 = 2m`.
+ */
+function gain(neighWeight: number, sigmaTot: number, ki: number, m2: number): number {
+  return neighWeight - (sigmaTot * ki) / m2;
+}
+
 /** One level of local moving. Returns the community label per node + whether it moved anything. */
 function oneLevel(g: WorkGraph): { comm: number[]; improved: boolean } {
   const comm = Array.from({ length: g.n }, (_, i) => i);
+  if (g.m2 <= 0) return { comm, improved: false };
   const sigmaTot = g.degree.slice();
   let improvedAny = false;
   let changed = true;
@@ -74,12 +87,14 @@ function oneLevel(g: WorkGraph): { comm: number[]; improved: boolean } {
 
       sigmaTot[ci] -= ki;
 
+      // Evaluate staying put first so ties (including floating-point ties) keep
+      // the node where it is; then prefer the lowest community index.
       let bestComm = ci;
-      let bestGain = (neighComm.get(ci) ?? 0) - (sigmaTot[ci] * ki) / g.m2;
+      let bestGain = gain(neighComm.get(ci) ?? 0, sigmaTot[ci], ki, g.m2);
       for (const c of [...neighComm.keys()].sort((a, b) => a - b)) {
-        const gain = (neighComm.get(c) ?? 0) - (sigmaTot[c] * ki) / g.m2;
-        if (gain > bestGain + EPS) {
-          bestGain = gain;
+        const g_c = gain(neighComm.get(c) ?? 0, sigmaTot[c], ki, g.m2);
+        if (g_c > bestGain + EPS) {
+          bestGain = g_c;
           bestComm = c;
         }
       }
