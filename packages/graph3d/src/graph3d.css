@@ -88,13 +88,30 @@
   flex-direction: column;
   gap: 8px;
   padding: 12px 14px;
-  min-width: 180px;
+  min-width: 190px;
+  max-height: calc(100% - 56px);
+  overflow-y: auto;
   background: rgba(236, 224, 196, 0.92);
   border: 1px solid #d8cbab;
   border-radius: 6px;
   font-family: Spectral, Georgia, "Times New Roman", serif;
   font-size: 13px;
   color: #1e2a3a;
+}
+
+.atlas-graph3d__search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px;
+  border: 1px solid #d8cbab;
+  border-radius: 4px;
+  background: rgba(244, 236, 216, 0.9);
+  font-family: inherit;
+  font-size: 13px;
+  color: #1e2a3a;
+}
+.atlas-graph3d__search::placeholder {
+  color: #8a7f6b;
 }
 
 .atlas-graph3d__controls-title {

@@ -7,7 +7,7 @@ import { tokens, clusterColor } from "./tokens.js";
 import { toLayeredGraph } from "./synthesize.js";
 import type { AtlasNode, AtlasLink, LayeredGraph } from "./synthesize.js";
 import { compileFilter } from "./filter.js";
-import type { CompiledFilter, FilterMode, GraphFilter } from "./filter.js";
+import type { CompiledFilter, FilterMode, GraphFilter, TagsById } from "./filter.js";
 import { FilterControls } from "./FilterControls.js";
 import "./graph3d.css";
 
@@ -21,6 +21,8 @@ export interface Graph3DProps {
   showControls?: boolean;
   /** notified whenever the effective filter changes (useful with `showControls`). */
   onFilterChange?: (filter: GraphFilter) => void;
+  /** tags per node id (GraphNode carries none) — enables tag filtering + tag chips. */
+  tagsById?: TagsById;
 }
 
 type Coords3 = { x: number; y: number; z: number };
@@ -139,7 +141,7 @@ function buildPencilLine(dimmed: boolean): THREE.Line {
   return line;
 }
 
-export function Graph3D({ data, selectedId, onSelect, filter, showControls, onFilterChange }: Graph3DProps): JSX.Element {
+export function Graph3D({ data, selectedId, onSelect, filter, showControls, onFilterChange, tagsById }: Graph3DProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<ForceGraph3DInstance | null>(null);
@@ -149,6 +151,8 @@ export function Graph3D({ data, selectedId, onSelect, filter, showControls, onFi
   const compiledRef = useRef<CompiledFilter>({ active: false, nodeActive: () => true, linkActive: () => true });
   const applyRef = useRef<(() => void) | null>(null);
   const prunedRef = useRef(false);
+  const tagsByIdRef = useRef<TagsById | undefined>(tagsById);
+  tagsByIdRef.current = tagsById;
 
   // when showControls is on, the panel self-manages filter state (seeded from `filter`).
   const [panelFilter, setPanelFilter] = useState<GraphFilter>(() => filter ?? {});
@@ -157,6 +161,16 @@ export function Graph3D({ data, selectedId, onSelect, filter, showControls, onFi
   const clusters = useMemo(
     () => Array.from(new Set(data.nodes.map((n) => n.cluster))).sort((a, b) => a - b),
     [data],
+  );
+
+  const edgeTypes = useMemo(
+    () => Array.from(new Set(data.links.map((l) => l.type))).sort(),
+    [data],
+  );
+
+  const allTags = useMemo(
+    () => (tagsById ? Array.from(new Set(Object.values(tagsById).flat())).sort() : []),
+    [tagsById],
   );
 
   const effectiveFilter: GraphFilter | undefined = showControls
@@ -171,7 +185,9 @@ export function Graph3D({ data, selectedId, onSelect, filter, showControls, onFi
 
   const recompute = () => {
     if (layeredRef.current) {
-      compiledRef.current = compileFilter(layeredRef.current, filterRef.current);
+      compiledRef.current = compileFilter(layeredRef.current, filterRef.current, {
+        tagsById: tagsByIdRef.current,
+      });
     }
   };
 
@@ -350,6 +366,8 @@ export function Graph3D({ data, selectedId, onSelect, filter, showControls, onFi
         <FilterControls
           value={panelFilter}
           clusters={clusters}
+          tags={allTags}
+          edgeTypes={edgeTypes}
           focusSelected={focusSelected}
           hasSelection={!!selectedId}
           onChange={patchPanelFilter}

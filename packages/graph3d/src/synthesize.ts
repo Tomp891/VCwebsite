@@ -1,6 +1,15 @@
-import type { GraphData, GraphLink, GraphNode } from "@atlas/contracts";
+import type { EdgeType, GraphData, GraphLink, GraphNode } from "@atlas/contracts";
 import type { NodeObject, LinkObject } from "3d-force-graph";
 import { layerZ } from "./tokens.js";
+
+/** A directed, typed adjacency entry precomputed per node. */
+export interface Adjacency {
+  id: string;
+  /** "out" = this node is the edge source; "in" = this node is the target. */
+  dir: "in" | "out";
+  /** edge type for real edges; omitted for synthesized structure up-links. */
+  type?: EdgeType;
+}
 
 export type LayerKind = "atom" | "concept" | "domain";
 
@@ -19,8 +28,8 @@ export interface AtlasNode extends NodeObject {
   kind: NodeKind;
   /** fixed Z so each layer stays on its own plane. */
   fz: number;
-  /** ids of adjacent nodes (undirected) — precomputed for cheap n-hop focus. */
-  neighborIds: string[];
+  /** directed + typed adjacency — precomputed for cheap n-hop / backlink focus. */
+  adj: Adjacency[];
 }
 
 export interface AtlasLink extends LinkObject<AtlasNode> {
@@ -28,6 +37,8 @@ export interface AtlasLink extends LinkObject<AtlasNode> {
   target: string;
   style: LinkStyle;
   confidence: number;
+  /** underlying edge type for real edges; omitted for structure up-links. */
+  type?: EdgeType;
 }
 
 export interface LayeredGraph {
@@ -55,7 +66,7 @@ export function toLayeredGraph(data: GraphData): LayeredGraph {
     layer: "atom",
     kind: "block",
     fz: layerZ.atom,
-    neighborIds: [],
+    adj: [],
   }));
 
   const links: AtlasLink[] = data.links.map((l: GraphLink) => ({
@@ -63,6 +74,7 @@ export function toLayeredGraph(data: GraphData): LayeredGraph {
     target: typeof l.target === "string" ? l.target : String(l.target),
     style: styleForTier(l.tier),
     confidence: l.confidence,
+    type: l.type,
   }));
 
   const clusters = Array.from(new Set(data.nodes.map((n) => n.cluster))).sort((a, b) => a - b);
@@ -81,7 +93,7 @@ export function toLayeredGraph(data: GraphData): LayeredGraph {
       layer: "concept",
       kind: "concept",
       fz: layerZ.concept,
-      neighborIds: [],
+      adj: [],
     };
   });
 
@@ -93,7 +105,7 @@ export function toLayeredGraph(data: GraphData): LayeredGraph {
     layer: "domain",
     kind: "domain",
     fz: layerZ.domain,
-    neighborIds: [],
+    adj: [],
   };
 
   // atom -> concept and concept -> domain structural up-links.
@@ -108,15 +120,15 @@ export function toLayeredGraph(data: GraphData): LayeredGraph {
   const nodes = [...atoms, ...conceptNodes, domainNode];
   const allLinks = [...links, ...upLinks];
 
-  // precompute undirected adjacency (matches the vasturiano highlight pattern) so
-  // focus / n-hop filtering is O(1) per node.
+  // precompute directed + typed adjacency (extends the vasturiano highlight pattern)
+  // so focus / n-hop / backlink filtering is O(1) per node.
   const byId = new Map<string, AtlasNode>(nodes.map((n) => [n.id, n]));
   for (const link of allLinks) {
     const a = byId.get(link.source);
     const b = byId.get(link.target);
     if (!a || !b) continue;
-    a.neighborIds.push(b.id);
-    b.neighborIds.push(a.id);
+    a.adj.push({ id: b.id, dir: "out", type: link.type });
+    b.adj.push({ id: a.id, dir: "in", type: link.type });
   }
 
   return { nodes, links: allLinks };
