@@ -24,6 +24,10 @@ export function softMemberships(
   selfWeight = 1,
 ): Membership[] {
   const out: Membership[] = [];
+  // clamp inputs so a caller can't request a >100% threshold or a negative
+  // self-affinity that would corrupt the normalisation below.
+  const threshold = Number.isFinite(minWeight) ? Math.min(Math.max(minWeight, 0), 1) : 0.1;
+  const self = Number.isFinite(selfWeight) && selfWeight > 0 ? selfWeight : 0;
 
   for (const node of graph.nodes) {
     const home = assignment[node];
@@ -31,13 +35,13 @@ export function softMemberships(
 
     const perCluster = new Map<number, number>();
     // self affinity keeps hard assignment dominant and handles degree-0 nodes.
-    perCluster.set(home, selfWeight);
+    perCluster.set(home, self);
 
     const nbrs = graph.adj.get(node);
     if (nbrs) {
       for (const [other, w] of nbrs) {
         const c = assignment[other];
-        if (c === undefined) continue;
+        if (c === undefined || !Number.isFinite(w) || w <= 0) continue;
         perCluster.set(c, (perCluster.get(c) ?? 0) + w);
       }
     }
@@ -51,7 +55,7 @@ export function softMemberships(
     );
     for (const [clusterId, w] of sorted) {
       const weight = w / total;
-      if (weight < minWeight && clusterId !== home) continue;
+      if (weight < threshold && clusterId !== home) continue;
       out.push({ blockId: node, clusterId, weight });
     }
   }
