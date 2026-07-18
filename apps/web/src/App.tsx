@@ -62,6 +62,21 @@ export function App() {
     [ai.provider],
   );
 
+  // Compact meta-summary of the whole store, injected into each chat prompt so
+  // the model can answer questions about the database itself (counts, tags).
+  const getChatOverview = useCallback(() => {
+    const bs = store.listBlocks();
+    const es = store.listEdges();
+    const pages = bs.filter((b) => b.parentId === null).length;
+    const explicit = es.filter((e) => e.tier === "explicit").length;
+    const tags = allTags(bs);
+    return [
+      `Total notes/blocks: ${bs.length} (top-level pages: ${pages}).`,
+      `Total links: ${es.length} (${explicit} explicit/human, ${es.length - explicit} inferred).`,
+      `Tags (${tags.length}): ${tags.map((t) => `#${t}`).join(", ") || "none"}.`,
+    ].join("\n");
+  }, []);
+
   const toggleTag = useCallback((tag: string) => {
     setActiveTags((cur) =>
       cur.includes(tag) ? cur.filter((t) => t !== tag) : [...cur, tag],
@@ -323,6 +338,7 @@ export function App() {
           provider={ai.provider}
           onPath={setPath}
           onSelect={setSelectedId}
+          getOverview={getChatOverview}
         />
       </aside>
     </div>

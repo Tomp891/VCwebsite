@@ -10,22 +10,35 @@ import type {
   RetrievedContext,
 } from "@atlas/contracts";
 
-export function buildPrompt(query: string, ctx: RetrievedContext): string {
+export function buildPrompt(
+  query: string,
+  ctx: RetrievedContext,
+  overview?: string,
+): string {
   const sources = ctx.blocks
     .map((b) => `[${b.id}] ${b.content}`)
     .join("\n");
-  return [
-    "You are Atlas, a knowledge-graph assistant. Answer the question using ONLY",
-    "the numbered sources below. Cite the source ids you rely on inline using",
-    "square brackets, e.g. [n3]. If the sources do not contain the answer, say so.",
+  const lines = [
+    "You are Atlas, a knowledge-graph assistant. Answer the question using the",
+    "numbered sources below. Cite the source ids you rely on inline using square",
+    "brackets, e.g. [n3]. For questions about the knowledge base itself (totals,",
+    "counts, which tags exist), use the 'Knowledge base overview' — those facts do",
+    "not need a citation. If neither the sources nor the overview contain the",
+    "answer, say so.",
     "",
+  ];
+  if (overview && overview.trim()) {
+    lines.push("Knowledge base overview:", overview.trim(), "");
+  }
+  lines.push(
     "Sources:",
     sources || "(no sources retrieved)",
     "",
     `Question: ${query}`,
     "",
     "Answer:",
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 /** Pull `[id]` citations out of the answer, keeping only known block ids. */
@@ -49,8 +62,9 @@ export async function answer(
   query: string,
   ctx: RetrievedContext,
   provider: AIProvider,
+  overview?: string,
 ): Promise<ChatAnswer> {
-  const prompt = buildPrompt(query, ctx);
+  const prompt = buildPrompt(query, ctx, overview);
   const text = await provider.chat(prompt);
   const knownIds = ctx.blocks.map((b) => b.id);
   const citations = extractCitations(text, knownIds);

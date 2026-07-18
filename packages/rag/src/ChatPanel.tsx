@@ -16,6 +16,9 @@ export interface ChatPanelProps {
   onPath?: (path: string[]) => void;
   /** Optional hook to open a cited source block (click-through). */
   onSelect?: (blockId: string) => void;
+  /** Optional provider of a fresh knowledge-base overview (counts, tags) that is
+   *  added to each prompt so the model can answer meta questions. */
+  getOverview?: () => string;
 }
 
 /** A cited source, captured at answer time so history survives edits. */
@@ -78,6 +81,7 @@ export function ChatPanel({
   provider,
   onPath,
   onSelect,
+  getOverview,
 }: ChatPanelProps): JSX.Element {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -96,7 +100,7 @@ export function ChatPanel({
       setError(null);
       try {
         const ctx = await retriever.retrieve(trimmed);
-        const ans = await answer(trimmed, ctx, provider);
+        const ans = await answer(trimmed, ctx, provider, getOverview?.());
         const byId = new Map(ctx.blocks.map((b) => [b.id, b]));
         const sources: StoredSource[] = ans.citations
           .map((id) => byId.get(id))
@@ -119,7 +123,7 @@ export function ChatPanel({
         setBusy(false);
       }
     },
-    [retriever, provider, busy, onPath],
+    [retriever, provider, busy, onPath, getOverview],
   );
 
   const clearHistory = useCallback(() => setHistory([]), []);
