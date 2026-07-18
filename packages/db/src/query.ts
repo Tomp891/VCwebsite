@@ -2,7 +2,7 @@
  * Pure query helpers for the "database = saved query over Block.props" idea.
  * No React here so the logic stays testable and reusable.
  */
-import type { Block, PropValue } from "@atlas/contracts";
+import type { Block, Edge, PropValue } from "@atlas/contracts";
 
 export type SortDir = "asc" | "desc";
 
@@ -15,6 +15,8 @@ export interface SortState {
 export interface Filter {
   /** match blocks whose `tags` prop includes this tag (empty = any). */
   tag: string;
+  /** match blocks whose `tags` prop includes *every* tag here (AND / facet). */
+  tags: string[];
   /** which prop key to match a value against (empty = ignore). */
   propKey: string;
   /** substring match against the chosen prop's rendered value. */
@@ -23,7 +25,7 @@ export interface Filter {
   text: string;
 }
 
-export const EMPTY_FILTER: Filter = { tag: "", propKey: "", propValue: "", text: "" };
+export const EMPTY_FILTER: Filter = { tag: "", tags: [], propKey: "", propValue: "", text: "" };
 
 /** All prop keys present across the given blocks, in stable first-seen order. */
 export function propKeys(blocks: Block[]): string[] {
@@ -69,6 +71,10 @@ function sortKey(value: PropValue | undefined): number | string {
 
 export function matchesFilter(block: Block, filter: Filter): boolean {
   if (filter.tag && !blockTags(block).includes(filter.tag)) return false;
+  if (filter.tags && filter.tags.length) {
+    const bt = blockTags(block);
+    if (!filter.tags.every((t) => bt.includes(t))) return false;
+  }
   if (filter.text) {
     if (!block.content.toLowerCase().includes(filter.text.toLowerCase())) return false;
   }
@@ -128,4 +134,97 @@ export function groupBlocks(blocks: Block[], groupKey: string): Group[] {
     map.get(g)!.push(b);
   }
   return order.map((key) => ({ key, blocks: map.get(key)! }));
+}
+
+/* ------------------------------------------------------------------ *
+ * Tag analytics — counts, backlinks, faceting, ranking.
+ * ------------------------------------------------------------------ */
+
+/** Number of blocks carrying each tag. */
+export function tagCounts(blocks: Block[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const b of blocks) for (const t of blockTags(b)) counts.set(t, (counts.get(t) ?? 0) + 1);
+  return counts;
+}
+
+/**
+ * Backlinks per block: the number of *distinct source blocks* that link into it
+ * via an explicit `link` edge. Mirrors the editor's backlink notion so the two
+ * surfaces agree on what "a backlink" is.
+ */
+export function blockBacklinkCounts(edges: Edge[]): Map<string, number> {
+  const bySrc = new Map<string, Set<string>>();
+  for (const e of edges) {
+    if (e.type !== "link" || e.tier !== "explicit") continue;
+    let set = bySrc.get(e.dstBlockId);
+    if (!set) {
+      set = new Set<string>();
+      bySrc.set(e.dstBlockId, set);
+    }
+    set.add(e.srcBlockId);
+  }
+  const counts = new Map<string, number>();
+  for (const [dst, srcs] of bySrc) counts.set(dst, srcs.size);
+  return counts;
+}
+
+/**
+ * Backlinks per tag: the total backlinks landing on the blocks that carry each
+ * tag. This measures how much the tagged content is referenced across the graph,
+ * which is what we rank tags by.
+ */
+export function tagBacklinkCounts(blocks: Block[], edges: Edge[]): Map<string, number> {
+  const perBlock = blockBacklinkCounts(edges);
+  const counts = new Map<string, number>();
+  for (const b of blocks) {
+    const bl = perBlock.get(b.id) ?? 0;
+    if (bl === 0) continue;
+    for (const t of blockTags(b)) counts.set(t, (counts.get(t) ?? 0) + bl);
+  }
+  return counts;
+}
+
+export interface TagStat {
+  tag: string;
+  /** blocks carrying the tag. */
+  count: number;
+  /** backlinks landing on blocks carrying the tag. */
+  backlinks: number;
+}
+
+/**
+ * Every tag ranked by backlinks (desc), then by block count (desc), then
+ * alphabetically — the ordering used by the tag index and the database facet.
+ */
+export function rankedTags(blocks: Block[], edges: Edge[]): TagStat[] {
+  const counts = tagCounts(blocks);
+  const backlinks = tagBacklinkCounts(blocks, edges);
+  return [...counts.keys()]
+    .map((tag) => ({ tag, count: counts.get(tag) ?? 0, backlinks: backlinks.get(tag) ?? 0 }))
+    .sort(
+      (a, b) =>
+        b.backlinks - a.backlinks || b.count - a.count || a.tag.localeCompare(b.tag),
+    );
+}
+
+/**
+ * Faceted drill-down: given already-selected tags, the tags that *co-occur* on
+ * the blocks matching all of them (excluding the selected ones), each with the
+ * block count and backlinks within that narrowed set. Ranked by backlinks.
+ * With no selection this returns stats for all tags over all blocks.
+ */
+export function coOccurringTags(
+  blocks: Block[],
+  edges: Edge[],
+  selected: string[],
+): TagStat[] {
+  const sel = new Set(selected);
+  const scope = selected.length
+    ? blocks.filter((b) => {
+        const bt = blockTags(b);
+        return selected.every((t) => bt.includes(t));
+      })
+    : blocks;
+  const stats = rankedTags(scope, edges);
+  return stats.filter((s) => !sel.has(s.tag));
 }
