@@ -42,32 +42,57 @@ export async function createEmbeddingIndex(
   await store.hydrate();
 
   async function sync(blocks: Block[]): Promise<number> {
-    const seen = new Set<BlockId>();
-    const stale: Array<{ block: Block; hash: string }> = [];
+    // Deduplicate by id, last occurrence wins. This keeps `sync` deterministic
+    // and idempotent when callers pass duplicate ids: exactly one record is
+    // written per id and the returned count reflects *distinct* (re)embedded
+    // blocks rather than raw input length. Map preserves first-insertion order
+    // so the embed batch order is stable across runs.
+    const latest = new Map<BlockId, Block>();
+    for (const block of blocks) latest.set(block.id, block);
 
-    for (const block of blocks) {
-      seen.add(block.id);
-      const hash = contentHash(blockText(block));
-      const existing = store.get(block.id);
-      if (!existing || existing.hash !== hash || existing.model !== provider.id) {
-        stale.push({ block, hash });
-      }
+    // Prune records for blocks that no longer exist in the incoming set. Done
+    // before embedding so an empty/shrunk block list is reconciled even when
+    // there is nothing new to embed.
+    for (const id of store.keys()) {
+      if (!latest.has(id)) store.delete(id);
     }
 
-    // Prune records for blocks that no longer exist.
-    for (const id of store.keys()) {
-      if (!seen.has(id)) store.delete(id);
+    // A block is stale (needs (re)embedding) when it has no record, its content
+    // hash changed, or it was embedded by a different model/provider.
+    const stale: Array<{ id: BlockId; hash: string; text: string }> = [];
+    for (const [id, block] of latest) {
+      const text = blockText(block);
+      const hash = contentHash(text);
+      const existing = store.get(id);
+      if (!existing || existing.hash !== hash || existing.model !== provider.id) {
+        stale.push({ id, hash, text });
+      }
     }
 
     if (stale.length === 0) return 0;
 
-    const vectors = await provider.embed(stale.map((s) => blockText(s.block)));
+    // The provider is a batch API: the i-th output vector must correspond to
+    // the i-th input text. Validate the shape so a misbehaving provider fails
+    // loudly instead of silently writing undefined vectors.
+    const vectors = await provider.embed(stale.map((s) => s.text));
+    if (vectors.length !== stale.length) {
+      throw new Error(
+        `embedding provider "${provider.id}" returned ${vectors.length} vectors for ${stale.length} inputs`,
+      );
+    }
+
     const ts = now();
-    stale.forEach(({ block, hash }, i) => {
+    stale.forEach(({ id, hash }, i) => {
+      const vector = vectors[i];
+      if (!Array.isArray(vector)) {
+        throw new Error(
+          `embedding provider "${provider.id}" returned a non-vector at index ${i}`,
+        );
+      }
       const record: EmbeddingRecord = {
-        blockId: block.id,
+        blockId: id,
         hash,
-        vector: vectors[i],
+        vector,
         model: provider.id,
         updatedAt: ts,
       };
