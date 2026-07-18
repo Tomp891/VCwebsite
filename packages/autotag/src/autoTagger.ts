@@ -36,29 +36,53 @@ export interface AutoTaggerOptions {
   recallK?: number;
 }
 
+/** Default neighbour fan-out for similarity recall. */
+const DEFAULT_RECALL_K = 5;
+
+/**
+ * Keyphrase confidence weights. Keyphrases are a weaker signal than a tag
+ * corroborated by similar notes, so their raw salience is discounted; a phrase
+ * that maps onto the existing taxonomy is trusted a little more than a brand-new
+ * one because it reuses the user's vocabulary.
+ */
+const KEYPHRASE_TAXONOMY_WEIGHT = 0.8;
+const KEYPHRASE_NEW_WEIGHT = 0.65;
+
+/** Read a block's tags defensively — `props.tags` is `string[] | undefined`. */
+function readTags(block: Block): string[] {
+  const raw = block.props.tags;
+  return Array.isArray(raw) ? raw : [];
+}
+
 /** Create a suggest-only AutoTagger bound to a corpus of blocks. */
 export function createAutoTagger(opts: AutoTaggerOptions = {}): AutoTagger {
   const blocks = opts.blocks ?? [];
   const minConfidence = opts.minConfidence ?? DEFAULT_TAG_THRESHOLD;
   const maxSuggestions = opts.maxSuggestions ?? MAX_SUGGESTIONS;
-  const recallK = opts.recallK ?? 5;
+  const recallK = opts.recallK ?? DEFAULT_RECALL_K;
   const taxonomy = buildTaxonomy(blocks);
 
   return {
-    async suggest(block: Block, index?: EmbeddingIndex): Promise<TagSuggestion[]> {
-      const existingTags = new Set(
-        ((block.props.tags as string[] | undefined) ?? []).map(normalizeTag),
-      );
+    async suggest(
+      block: Block,
+      index?: EmbeddingIndex,
+    ): Promise<TagSuggestion[]> {
+      // Tags the block already carries (normalized) are never re-suggested.
+      const existingTags = new Set(readTags(block).map(normalizeTag));
 
-      // Best confidence + reason per candidate tag, preferring similarity source.
+      // Best candidate per canonical tag. Filled in source-priority order
+      // (similarity first) so that on a confidence tie the richer
+      // "existing-similarity" reason/source wins.
       const merged = new Map<string, TagSuggestion>();
-      const consider = (s: TagSuggestion) => {
-        if (!s.tag || existingTags.has(s.tag)) return;
-        const prev = merged.get(s.tag);
-        if (!prev || s.confidence > prev.confidence) merged.set(s.tag, s);
+      const consider = (candidate: TagSuggestion): void => {
+        if (!candidate.tag || existingTags.has(candidate.tag)) return;
+        const prev = merged.get(candidate.tag);
+        if (!prev || candidate.confidence > prev.confidence) {
+          merged.set(candidate.tag, candidate);
+        }
       };
 
-      // Signal 1: existing-tag similarity recall.
+      // Signal 1: tags recalled from the most similar existing notes.
       for (const rec of recallExistingTags(block, blocks, index, recallK)) {
         const { tag } = dedupeAgainstTaxonomy(rec.tag, taxonomy);
         if (!tag) continue;
@@ -71,16 +95,15 @@ export function createAutoTagger(opts: AutoTaggerOptions = {}): AutoTagger {
         });
       }
 
-      // Signal 2: keyphrase extraction.
+      // Signal 2: keyphrases extracted from this block's own content.
       for (const kp of extractKeyphrases(block.content)) {
         const { tag, isNew } = dedupeAgainstTaxonomy(kp.phrase, taxonomy);
         if (!tag) continue;
-        // slightly discount brand-new keyphrase tags vs. reused taxonomy tags.
-        const confidence = clampConfidence(kp.score * (isNew ? 0.65 : 0.8));
+        const weight = isNew ? KEYPHRASE_NEW_WEIGHT : KEYPHRASE_TAXONOMY_WEIGHT;
         consider({
           blockId: block.id,
           tag,
-          confidence,
+          confidence: clampConfidence(kp.score * weight),
           source: "keyphrase",
           reason: isNew
             ? `Key phrase "${kp.phrase}" in this note`
