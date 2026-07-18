@@ -33,7 +33,10 @@ export function buildTimeline(
   opts: TimelineOptions = {},
 ): TimelineFrame[] {
   if (blocks.length === 0) return [];
-  const ordered = [...blocks].sort((a, b) => a.createdAt - b.createdAt);
+  // stable order: creation time, with id as a deterministic tiebreak.
+  const ordered = [...blocks].sort(
+    (a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
   const steps = Math.max(1, Math.min(opts.frames ?? ordered.length, ordered.length));
   const frames: TimelineFrame[] = [];
   for (let s = 1; s <= steps; s++) {
@@ -75,6 +78,11 @@ export function useTemporalPlayback(
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // keep the cursor in range if the timeline shrinks (e.g. data changed).
+  useEffect(() => {
+    setFrameIndex((i) => Math.min(i, Math.max(0, frameCount - 1)));
+  }, [frameCount]);
 
   useEffect(() => {
     if (!playing || frameCount === 0) return;
