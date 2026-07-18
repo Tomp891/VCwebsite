@@ -1,0 +1,22 @@
+{
+  "name": "atlas-kms",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Atlas: AI graph-based knowledge management (Notion/Logseq/Obsidian/Mem hybrid)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace apps/web",
+    "build": "npm run build --workspace packages/contracts && npm run build --workspace apps/web",
+    "typecheck": "tsc -b",
+    "lint": "eslint . --ext .ts,.tsx"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.5.4"
+  }
+}
