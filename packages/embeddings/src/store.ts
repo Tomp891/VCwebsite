@@ -46,6 +46,7 @@ export function createMemoryStore(): EmbeddingStore {
 
 const DB_NAME = "atlas-embeddings";
 const STORE_NAME = "records";
+const DB_VERSION = 1;
 
 function getIndexedDB(): IDBFactory | undefined {
   return typeof indexedDB !== "undefined" ? indexedDB : undefined;
@@ -53,15 +54,29 @@ function getIndexedDB(): IDBFactory | undefined {
 
 function openDB(idb: IDBFactory, dbName: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = idb.open(dbName, 1);
+    let req: IDBOpenDBRequest;
+    try {
+      req = idb.open(dbName, DB_VERSION);
+    } catch (err) {
+      reject(err);
+      return;
+    }
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: "blockId" });
       }
     };
-    req.onsuccess = () => resolve(req.result);
+    req.onsuccess = () => {
+      const db = req.result;
+      // Don't let this connection block a future upgrade from another tab.
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
     req.onerror = () => reject(req.error);
+    // A blocked open (older connection still open) is treated as a failure so
+    // the store degrades to memory-only rather than hanging forever.
+    req.onblocked = () => reject(req.error ?? new Error("indexedDB open blocked"));
   });
 }
 
@@ -69,33 +84,78 @@ export interface IndexedDBStoreOptions {
   dbName?: string;
 }
 
+/** Mutation applied inside a readwrite transaction against the records store. */
+type WriteOp = (store: IDBObjectStore) => void;
+
 /**
  * IndexedDB-backed store with a synchronous in-memory mirror. Reads are served
  * from memory; writes update memory immediately and are flushed to IndexedDB in
- * the background. If IndexedDB is missing (e.g. Node without a shim) it behaves
- * exactly like the memory store.
+ * the background. If IndexedDB is missing (e.g. Node without a shim) — or if it
+ * fails at runtime (private-mode quota, corrupted db, blocked upgrade) — it
+ * behaves exactly like the memory store: reads/writes keep working in memory
+ * and durable persistence is silently skipped.
  */
 export function createIndexedDBStore(options: IndexedDBStoreOptions = {}): EmbeddingStore {
   const dbName = options.dbName ?? DB_NAME;
   const mem = createMemoryStore();
   const idb = getIndexedDB();
+
+  /** Set once IndexedDB proves unusable; from then on we stay memory-only. */
+  let disabled = idb === undefined;
   let dbPromise: Promise<IDBDatabase | undefined> | undefined;
 
   function db(): Promise<IDBDatabase | undefined> {
-    if (!idb) return Promise.resolve(undefined);
-    if (!dbPromise) dbPromise = openDB(idb, dbName).catch(() => undefined);
+    if (disabled || !idb) return Promise.resolve(undefined);
+    if (!dbPromise) {
+      dbPromise = openDB(idb, dbName).catch(() => {
+        disabled = true;
+        return undefined;
+      });
+    }
     return dbPromise;
   }
 
-  function write(mode: "put" | "delete" | "clear", record?: EmbeddingRecord, id?: BlockId): void {
-    if (!idb) return;
-    void db().then((database) => {
+  /** Run one mutation in its own transaction, resolving on durable commit. */
+  function runTransaction(database: IDBDatabase, op: WriteOp): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let tx: IDBTransaction;
+      try {
+        tx = database.transaction(STORE_NAME, "readwrite");
+      } catch (err) {
+        reject(err);
+        return;
+      }
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error ?? new Error("indexedDB transaction aborted"));
+      try {
+        op(tx.objectStore(STORE_NAME));
+      } catch (err) {
+        try {
+          tx.abort();
+        } catch {
+          /* ignore — the reject below is what matters */
+        }
+        reject(err);
+      }
+    });
+  }
+
+  // Background writes are serialized on a single promise chain so they apply in
+  // call order and a failure in one never rejects (or reorders) later writes.
+  let chain: Promise<void> = Promise.resolve();
+
+  function enqueue(op: WriteOp): void {
+    if (disabled || !idb) return;
+    chain = chain.then(async () => {
+      const database = await db();
       if (!database) return;
-      const tx = database.transaction(STORE_NAME, "readwrite");
-      const os = tx.objectStore(STORE_NAME);
-      if (mode === "put" && record) os.put(record);
-      else if (mode === "delete" && id !== undefined) os.delete(id);
-      else if (mode === "clear") os.clear();
+      try {
+        await runTransaction(database, op);
+      } catch {
+        // A single failed flush must not break the in-memory mirror or block
+        // subsequent writes; durable state is best-effort.
+      }
     });
   }
 
@@ -103,13 +163,24 @@ export function createIndexedDBStore(options: IndexedDBStoreOptions = {}): Embed
     async hydrate() {
       const database = await db();
       if (!database) return;
-      const records: EmbeddingRecord[] = await new Promise((resolve, reject) => {
-        const tx = database.transaction(STORE_NAME, "readonly");
-        const req = tx.objectStore(STORE_NAME).getAll();
-        req.onsuccess = () => resolve(req.result as EmbeddingRecord[]);
-        req.onerror = () => reject(req.error);
-      });
-      for (const r of records) mem.put(r);
+      try {
+        const records = await new Promise<EmbeddingRecord[]>((resolve, reject) => {
+          let tx: IDBTransaction;
+          try {
+            tx = database.transaction(STORE_NAME, "readonly");
+          } catch (err) {
+            reject(err);
+            return;
+          }
+          const req = tx.objectStore(STORE_NAME).getAll();
+          req.onsuccess = () => resolve((req.result as EmbeddingRecord[]) ?? []);
+          req.onerror = () => reject(req.error);
+          tx.onabort = () => reject(tx.error ?? new Error("indexedDB hydrate aborted"));
+        });
+        for (const r of records) mem.put(r);
+      } catch {
+        // Reads failed — keep whatever is already in memory and carry on.
+      }
     },
     get: mem.get,
     all: mem.all,
@@ -117,15 +188,21 @@ export function createIndexedDBStore(options: IndexedDBStoreOptions = {}): Embed
     keys: mem.keys,
     put: (record) => {
       mem.put(record);
-      write("put", record);
+      enqueue((os) => {
+        os.put(record);
+      });
     },
     delete: (id) => {
       mem.delete(id);
-      write("delete", undefined, id);
+      enqueue((os) => {
+        os.delete(id);
+      });
     },
     clear: () => {
       mem.clear();
-      write("clear");
+      enqueue((os) => {
+        os.clear();
+      });
     },
   };
 }
