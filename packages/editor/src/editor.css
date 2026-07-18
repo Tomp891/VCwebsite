@@ -75,12 +75,14 @@
 .atlas-page-title,
 .atlas-block-input {
   width: 100%;
+  box-sizing: border-box;
   border: none;
   background: transparent;
   color: var(--ink);
   resize: none;
   font-family: var(--serif);
   overflow: hidden;
+  display: block;
 }
 .atlas-page-title:focus,
 .atlas-block-input:focus {
@@ -93,6 +95,49 @@
   margin-bottom: 14px;
   line-height: 1.2;
 }
+
+.atlas-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 16px;
+}
+.atlas-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 6px 4px 8px;
+  color: var(--parchment);
+  background: var(--verdigris);
+  border-radius: 999px;
+}
+.atlas-tag-chip__x {
+  border: none;
+  background: transparent;
+  color: var(--parchment);
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 1px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.atlas-tag-chip__x:hover { opacity: 1; }
+.atlas-tag-input {
+  border: none;
+  background: transparent;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink);
+  padding: 4px 2px;
+  min-width: 90px;
+  flex: 1;
+}
+.atlas-tag-input:focus { outline: none; }
+.atlas-tag-input::placeholder { color: var(--pencil); }
 
 .atlas-blocks {
   display: flex;

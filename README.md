@@ -49,3 +49,29 @@ npm run dev        # apps/web on :5173
 npm run typecheck
 npm run lint
 ```
+
+## Local AI (Ollama)
+
+The "Ask" box runs GraphRAG retrieval + citations locally. Answer generation
+uses a pluggable `AIProvider`: by default it prefers a local **Ollama** server
+and falls back to a deterministic mock when none is running (so the app works
+with zero setup). No API keys, nothing paid.
+
+To get real local answers:
+
+```
+# 1. Install Ollama: https://ollama.com/download  (must be running)
+# 2. One-command setup (pulls the default models):
+./scripts/setup-local-ai.sh
+# 3. Run the app and open http://localhost:5173 → "Ask"
+npm run dev
+```
+
+The status dot under "Ask" turns green ("Local · Ollama") automatically. Change
+the server URL or models any time in **Ask → Settings** (persisted locally).
+
+- Default chat model: `llama3.1:8b` (~4.7 GB, comfortable on 16 GB RAM). For a
+  lighter/faster option use `llama3.2:3b`.
+- Default embed model: `nomic-embed-text` (~275 MB).
+- Run the app **locally** (not via a tunnel) so the browser can reach your
+  machine's `localhost:11434`.

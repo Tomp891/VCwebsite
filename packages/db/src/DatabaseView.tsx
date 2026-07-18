@@ -5,8 +5,8 @@ import {
   EMPTY_FILTER,
   applyFilter,
   applySort,
-  allTags,
   blockTags,
+  coOccurringTags,
   formatValue,
   groupBlocks,
   propKeys,
@@ -37,8 +37,14 @@ export function DatabaseView({ store, title = "Database" }: DatabaseViewProps): 
   const [boardKey, setBoardKey] = useState<string>("tags");
 
   const keys = useMemo(() => propKeys(blocks), [blocks]);
-  const tags = useMemo(() => allTags(blocks), [blocks]);
   const columns = useMemo(() => ["content", ...keys], [keys]);
+
+  // Faceted tags: what's available *within* the current tag selection, with the
+  // block count and backlinks for each, ranked by backlinks.
+  const availableTags = useMemo(
+    () => coOccurringTags(blocks, store.listEdges(), filter.tags),
+    [blocks, store, filter.tags],
+  );
 
   const rows = useMemo(
     () => applySort(applyFilter(blocks, filter), sort),
@@ -46,6 +52,11 @@ export function DatabaseView({ store, title = "Database" }: DatabaseViewProps): 
   );
 
   const patch = (p: Partial<Filter>) => setFilter((f) => ({ ...f, ...p }));
+
+  const addTag = (t: string) =>
+    setFilter((f) => (f.tags.includes(t) ? f : { ...f, tags: [...f.tags, t] }));
+  const removeTag = (t: string) =>
+    setFilter((f) => ({ ...f, tags: f.tags.filter((x) => x !== t) }));
 
   function toggleSort(key: string) {
     setSort((s) => {
@@ -72,18 +83,6 @@ export function DatabaseView({ store, title = "Database" }: DatabaseViewProps): 
           onChange={(e) => patch({ text: e.target.value })}
           aria-label="Search content"
         />
-
-        <label>
-          Tag
-          <select value={filter.tag} onChange={(e) => patch({ tag: e.target.value })}>
-            <option value="">all</option>
-            {tags.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </label>
 
         <label>
           Prop
@@ -143,6 +142,54 @@ export function DatabaseView({ store, title = "Database" }: DatabaseViewProps): 
         </div>
 
         <span className="atlas-dbview__count">{rows.length} blocks</span>
+      </div>
+
+      <div className="atlas-dbview__facet">
+        {filter.tags.length > 0 && (
+          <div className="atlas-dbview__facet-row">
+            <span className="atlas-dbview__facet-label">Selected</span>
+            {filter.tags.map((t) => (
+              <button
+                key={t}
+                type="button"
+                className="atlas-chip atlas-chip--active"
+                title={`Remove #${t}`}
+                onClick={() => removeTag(t)}
+              >
+                #{t} <span aria-hidden="true">×</span>
+              </button>
+            ))}
+            <button
+              type="button"
+              className="atlas-dbview__clear"
+              onClick={() => patch({ tags: [] })}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+        <div className="atlas-dbview__facet-row">
+          <span className="atlas-dbview__facet-label">
+            {filter.tags.length ? `Within selection · ${availableTags.length} tags` : `Tags · ${availableTags.length}`}
+          </span>
+          {availableTags.length === 0 ? (
+            <span className="atlas-empty">no further tags here</span>
+          ) : (
+            availableTags.map(({ tag, count, backlinks }) => (
+              <button
+                key={tag}
+                type="button"
+                className="atlas-chip atlas-dbview__facet-tag"
+                title={`Add #${tag} · ${backlinks} backlink${backlinks === 1 ? "" : "s"} · ${count} note${count === 1 ? "" : "s"}`}
+                onClick={() => addTag(tag)}
+              >
+                #{tag}
+                <span className="atlas-dbview__facet-links" title={`${backlinks} backlinks`}>↩{backlinks}</span>
+                <span className="atlas-dbview__facet-count" title={`${count} notes`}>{count}</span>
+              </button>
+            ))
+          )}
+        </div>
       </div>
 
       {rows.length === 0 ? (
