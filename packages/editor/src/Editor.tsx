@@ -35,15 +35,17 @@ interface BlockRowProps {
   onCommit?: (content: string) => void;
   /** Split at the caret: text before stays, text after seeds a new block. */
   onEnter: (before: string, after: string) => void;
-  /** Replace this block with one bullet per line (multi-line paste). */
-  onSplitLines: (lines: string[]) => void;
   onDelete: () => void;
   /** Focus this row's textarea (caret at start) once, after it mounts. */
   autoFocus?: boolean;
 }
 
-function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onSplitLines, onDelete, autoFocus }: BlockRowProps): JSX.Element {
+function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, autoFocus }: BlockRowProps): JSX.Element {
   const ref = useRef<HTMLTextAreaElement>(null);
+  // Bridges the async re-render gap between two rapid Enter presses: holds the
+  // value/caret we just produced so the next keydown reads it instead of the
+  // not-yet-committed DOM value.
+  const pending = useRef<{ value: string; caret: number } | null>(null);
   const [suggest, setSuggest] = useState<WikilinkMatch | null>(null);
   const [active, setActive] = useState(0);
 
@@ -54,9 +56,9 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onSplitLines
     }
   }, [autoFocus]);
 
-  // Grow the textarea to fit its content so long bullets wrap onto extra
-  // visual lines instead of scrolling inside a single row. Runs before paint
-  // so freshly typed text is never clipped or hidden.
+  // Grow the textarea to fit its content so a bullet can hold multiple lines
+  // (one bullet per topic) instead of scrolling inside a single row. Runs
+  // before paint so a freshly typed line is never clipped or hidden.
   const autoGrow = useCallback(() => {
     const el = ref.current;
     if (!el) return;
@@ -113,14 +115,44 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onSplitLines
         return;
       }
     }
-    if (e.key === "Enter") {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       const el = e.currentTarget;
-      const caret = el.selectionStart ?? el.value.length;
-      const end = el.selectionEnd ?? caret;
-      // Every Enter starts a new bullet: split at the caret, text before stays
-      // here and text after seeds the new bullet below.
-      onEnter(el.value.slice(0, caret), el.value.slice(end));
+      const src = pending.current ?? { value: el.value, caret: el.selectionStart ?? el.value.length };
+      const value = src.value;
+      const caret = src.caret;
+      const lineStart = value.lastIndexOf("\n", caret - 1) + 1;
+      const nl = value.indexOf("\n", caret);
+      const lineEnd = nl === -1 ? value.length : nl;
+      const currentLine = value.slice(lineStart, lineEnd);
+      // Double-Enter (Enter on an empty line) ends this bullet and starts a new
+      // one; a single Enter just adds a line inside the same bullet, so a topic
+      // stays in one bullet.
+      if (currentLine.trim() === "" && value.trim() !== "") {
+        pending.current = null;
+        const before = value.slice(0, lineStart).replace(/\n$/, "");
+        const after = value.slice(lineEnd);
+        onEnter(before, after);
+        return;
+      }
+      // Insert a newline within the bullet ourselves and place the caret after
+      // it, so the next keystroke (and a possible double-Enter) is reliable.
+      // Mutate the DOM synchronously (value, caret, height) so the new line is
+      // visible immediately; React's async re-render then commits the same
+      // value, which leaves the DOM (and caret) untouched.
+      const next = `${value.slice(0, caret)}\n${value.slice(caret)}`;
+      const pos = caret + 1;
+      el.value = next;
+      el.setSelectionRange(pos, pos);
+      autoGrow();
+      // Keep the just-added line on screen instead of forcing the user to
+      // scroll to find where the Enter went.
+      el.scrollIntoView({ block: "nearest" });
+      pending.current = { value: next, caret: pos };
+      onChange(next);
+      requestAnimationFrame(() => {
+        pending.current = null;
+      });
       return;
     }
     if (e.key === "Backspace" && block.content === "") {
@@ -140,20 +172,14 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onSplitLines
           rows={1}
           placeholder="Write a block… use [[ to link"
           onChange={(e) => {
+            pending.current = null;
             onChange(e.target.value);
             refresh(e.target);
           }}
           onKeyUp={(e) => refresh(e.currentTarget)}
-          onClick={(e) => refresh(e.currentTarget)}
-          onPaste={(e) => {
-            const text = e.clipboardData.getData("text/plain");
-            if (!text.includes("\n")) return;
-            e.preventDefault();
-            const el = e.currentTarget;
-            const start = el.selectionStart ?? el.value.length;
-            const end = el.selectionEnd ?? start;
-            const merged = el.value.slice(0, start) + text + el.value.slice(end);
-            onSplitLines(merged.split(/\r?\n/));
+          onClick={(e) => {
+            pending.current = null;
+            refresh(e.currentTarget);
           }}
           onBlur={(e) => {
             onCommit?.(e.currentTarget.value);
@@ -318,31 +344,25 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
     setFocusId(created.id);
   }
 
-  // Replace one block with several bullets (one per line): the first line
-  // stays in the block, each following line becomes a new sibling below, and
-  // the last created bullet takes focus. Handles Enter (2 lines) and
-  // multi-line paste (n lines) alike.
-  function splitIntoBullets(id: BlockId, lines: string[]): void {
-    if (!currentId || lines.length === 0) return;
-    const idx = children.findIndex((c) => c.id === id);
+  // Enter inside a block: keep `before` in the current block, push `after` into
+  // a new block right below it, then focus the new block.
+  function splitBlock(afterId: BlockId, before: string, after: string): void {
+    if (!currentId) return;
+    const idx = children.findIndex((c) => c.id === afterId);
     if (idx === -1) return;
-    store.upsertBlock({ id, content: lines[0] });
-    const rest = lines.slice(1);
-    if (rest.length === 0) return;
+    store.upsertBlock({ id: afterId, content: before });
     // Make room: bump the order of every sibling below the split point.
     for (const sib of children.slice(idx + 1)) {
-      store.upsertBlock({ id: sib.id, order: sib.order + rest.length });
+      store.upsertBlock({ id: sib.id, order: sib.order + 1 });
     }
-    const created = rest.map((line, i) =>
-      store.createBlock({
-        parentId: currentId,
-        order: children[idx].order + 1 + i,
-        type: "text",
-        content: line,
-        props: {},
-      }),
-    );
-    setFocusId(created[created.length - 1].id);
+    const created = store.createBlock({
+      parentId: currentId,
+      order: children[idx].order + 1,
+      type: "text",
+      content: after,
+      props: {},
+    });
+    setFocusId(created.id);
   }
 
   // Backspace on an empty block: delete it and focus the previous sibling.
@@ -352,31 +372,6 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
     const prev = idx > 0 ? children[idx - 1] : null;
     if (prev) setFocusId(prev.id);
   }
-
-  // One bullet per line: split any existing (pre-migration) block whose
-  // content still contains newlines into separate sibling bullets.
-  useEffect(() => {
-    const multi = blocks.find((b) => b.parentId !== null && b.content.includes("\n"));
-    if (!multi) return;
-    const lines = multi.content.split("\n");
-    const siblings = blocks
-      .filter((b) => b.parentId === multi.parentId)
-      .sort((a, b) => a.order - b.order);
-    const idx = siblings.findIndex((s) => s.id === multi.id);
-    store.upsertBlock({ id: multi.id, content: lines[0] });
-    for (const sib of siblings.slice(idx + 1)) {
-      store.upsertBlock({ id: sib.id, order: sib.order + lines.length - 1 });
-    }
-    lines.slice(1).forEach((line, i) => {
-      store.createBlock({
-        parentId: multi.parentId,
-        order: multi.order + 1 + i,
-        type: "text",
-        content: line,
-        props: {},
-      });
-    });
-  }, [blocks, store]);
 
   const pageTags = current ? blockTagList(current.props) : [];
 
@@ -453,8 +448,7 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
                   autoFocus={b.id === focusId}
                   onChange={(content) => store.upsertBlock({ id: b.id, content })}
                   onCommit={(content) => mergeHashtags(content)}
-                  onEnter={(before, after) => splitIntoBullets(b.id, [before, after])}
-                  onSplitLines={(lines) => splitIntoBullets(b.id, lines)}
+                  onEnter={(before, after) => splitBlock(b.id, before, after)}
                   onDelete={() => removeChild(b.id)}
                 />
               ))}
