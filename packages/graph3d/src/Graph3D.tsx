@@ -9,6 +9,8 @@ import type { AtlasNode, AtlasLink, LayeredGraph } from "./synthesize.js";
 import { compileFilter } from "./filter.js";
 import type { CompiledFilter, FilterMode, GraphFilter, TagsById } from "./filter.js";
 import { FilterControls } from "./FilterControls.js";
+import { PagePreview } from "./PagePreview.js";
+import type { PagePreviewContent, PageNeighborRef } from "./PagePreview.js";
 import "./graph3d.css";
 
 export interface Graph3DProps {
@@ -23,6 +25,12 @@ export interface Graph3DProps {
   onFilterChange?: (filter: GraphFilter) => void;
   /** tags per node id (GraphNode carries none) — enables tag filtering + tag chips. */
   tagsById?: TagsById;
+  /** open the full page for a node (double-click a node or the preview's Open button). */
+  onOpen?: (id: string) => void;
+  /** richer page content per node id for the hover/click preview card. */
+  previewById?: Record<string, PagePreviewContent>;
+  /** render the built-in hover/click page-preview card (default true). */
+  showPreview?: boolean;
 }
 
 type Coords3 = { x: number; y: number; z: number };
@@ -141,7 +149,18 @@ function buildPencilLine(dimmed: boolean): THREE.Line {
   return line;
 }
 
-export function Graph3D({ data, selectedId, onSelect, filter, showControls, onFilterChange, tagsById }: Graph3DProps): JSX.Element {
+export function Graph3D({
+  data,
+  selectedId,
+  onSelect,
+  filter,
+  showControls,
+  onFilterChange,
+  tagsById,
+  onOpen,
+  previewById,
+  showPreview = true,
+}: Graph3DProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<ForceGraph3DInstance | null>(null);
@@ -153,6 +172,13 @@ export function Graph3D({ data, selectedId, onSelect, filter, showControls, onFi
   const prunedRef = useRef(false);
   const tagsByIdRef = useRef<TagsById | undefined>(tagsById);
   tagsByIdRef.current = tagsById;
+  const onOpenRef = useRef<Graph3DProps["onOpen"]>(onOpen);
+  onOpenRef.current = onOpen;
+  const hoverSetRef = useRef<((id: string | undefined) => void) | null>(null);
+  const lastClickRef = useRef<{ id: string; t: number } | null>(null);
+
+  const [hoveredId, setHoveredId] = useState<string | undefined>(undefined);
+  hoverSetRef.current = setHoveredId;
 
   // when showControls is on, the panel self-manages filter state (seeded from `filter`).
   const [panelFilter, setPanelFilter] = useState<GraphFilter>(() => filter ?? {});
@@ -172,6 +198,29 @@ export function Graph3D({ data, selectedId, onSelect, filter, showControls, onFi
     () => (tagsById ? Array.from(new Set(Object.values(tagsById).flat())).sort() : []),
     [tagsById],
   );
+
+  // resolve real (contract) connections per node for the preview card. Synthesized
+  // concept/domain nodes aren't in data.nodes, so they simply get no preview.
+  const pageIndex = useMemo(() => {
+    const nodeById = new Map(data.nodes.map((n) => [n.id, n]));
+    const outgoing = new Map<string, PageNeighborRef[]>();
+    const backlinks = new Map<string, PageNeighborRef[]>();
+    const add = (m: Map<string, PageNeighborRef[]>, key: string, ref: PageNeighborRef) => {
+      const arr = m.get(key);
+      if (arr) arr.push(ref);
+      else m.set(key, [ref]);
+    };
+    for (const l of data.links) {
+      const s = typeof l.source === "string" ? l.source : String(l.source);
+      const t = typeof l.target === "string" ? l.target : String(l.target);
+      const sn = nodeById.get(s);
+      const tn = nodeById.get(t);
+      if (!sn || !tn) continue;
+      add(outgoing, s, { id: t, label: tn.label });
+      add(backlinks, t, { id: s, label: sn.label });
+    }
+    return { nodeById, outgoing, backlinks };
+  }, [data]);
 
   const effectiveFilter: GraphFilter | undefined = showControls
     ? { ...panelFilter, focusId: focusSelected ? selectedId : undefined }
@@ -260,7 +309,22 @@ export function Graph3D({ data, selectedId, onSelect, filter, showControls, onFi
       .linkColor(linkCol)
       .linkWidth(linkW)
       .linkOpacity(0.85)
-      .onNodeClick((n: NodeObject) => onSelectRef.current?.((n as AtlasNode).id));
+      .onNodeHover((n: NodeObject | null) =>
+        hoverSetRef.current?.(n ? (n as AtlasNode).id : undefined),
+      )
+      .onNodeClick((n: NodeObject) => {
+        const id = (n as AtlasNode).id;
+        const now = Date.now();
+        const last = lastClickRef.current;
+        // second click on the same node within the window = open (double-click).
+        if (last && last.id === id && now - last.t < 350) {
+          lastClickRef.current = null;
+          onOpenRef.current?.(id);
+          return;
+        }
+        lastClickRef.current = { id, t: now };
+        onSelectRef.current?.(id);
+      });
 
     // re-applies the visual accessors (idiomatic force-graph "refresh") so a filter
     // change redraws without rebuilding graphData (keeps node positions stable), and
@@ -358,10 +422,29 @@ export function Graph3D({ data, selectedId, onSelect, filter, showControls, onFi
 
   const patchPanelFilter = (patch: Partial<GraphFilter>) => setPanelFilter((prev) => ({ ...prev, ...patch }));
 
+  // hover previews transiently; selection pins the card open.
+  const previewId = hoveredId ?? selectedId;
+  const previewNode = previewId ? pageIndex.nodeById.get(previewId) : undefined;
+
   return (
     <div ref={containerRef} className="atlas-graph3d">
       <div ref={canvasRef} className="atlas-graph3d__canvas" />
       <div className="atlas-graph3d__caption">Living Atlas — atoms · concepts · domain</div>
+      {showPreview && previewNode && (
+        <PagePreview
+          id={previewNode.id}
+          title={previewById?.[previewNode.id]?.title ?? previewNode.label}
+          layer={previewNode.layer}
+          cluster={previewNode.cluster}
+          tags={tagsById?.[previewNode.id] ?? []}
+          snippet={previewById?.[previewNode.id]?.snippet}
+          pinned={previewNode.id === selectedId}
+          outgoing={pageIndex.outgoing.get(previewNode.id) ?? []}
+          backlinks={pageIndex.backlinks.get(previewNode.id) ?? []}
+          onOpen={onOpen}
+          onSelect={onSelect}
+        />
+      )}
       {showControls && (
         <FilterControls
           value={panelFilter}

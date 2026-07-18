@@ -15,3 +15,5 @@ export type {
 } from "./filter.js";
 export { FilterControls } from "./FilterControls.js";
 export type { FilterControlsProps } from "./FilterControls.js";
+export { PagePreview } from "./PagePreview.js";
+export type { PagePreviewProps, PagePreviewContent, PageNeighborRef } from "./PagePreview.js";
