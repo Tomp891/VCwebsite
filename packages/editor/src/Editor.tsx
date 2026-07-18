@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { Block, BlockId, EditorStore } from "@atlas/contracts";
 import { blockTitle } from "./wikilinks.js";
+import { blockTagList, extractHashtags, normalizeTag, unionTags } from "./tags.js";
 import "./editor.css";
 
 /** Subscribe to the store and re-render on any mutation. */
@@ -30,11 +31,13 @@ interface BlockRowProps {
   block: Block;
   pageTitles: string[];
   onChange: (content: string) => void;
+  /** Fired on blur with the final content (used to harvest #hashtags). */
+  onCommit?: (content: string) => void;
   onEnter: () => void;
   onDelete: () => void;
 }
 
-function BlockRow({ block, pageTitles, onChange, onEnter, onDelete }: BlockRowProps): JSX.Element {
+function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete }: BlockRowProps): JSX.Element {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [suggest, setSuggest] = useState<WikilinkMatch | null>(null);
   const [active, setActive] = useState(0);
@@ -114,7 +117,10 @@ function BlockRow({ block, pageTitles, onChange, onEnter, onDelete }: BlockRowPr
           }}
           onKeyUp={(e) => refresh(e.currentTarget)}
           onClick={(e) => refresh(e.currentTarget)}
-          onBlur={() => setTimeout(() => setSuggest(null), 120)}
+          onBlur={(e) => {
+            onCommit?.(e.currentTarget.value);
+            setTimeout(() => setSuggest(null), 120);
+          }}
           onKeyDown={onKeyDown}
         />
         {matches.length > 0 && (
@@ -134,6 +140,58 @@ function BlockRow({ block, pageTitles, onChange, onEnter, onDelete }: BlockRowPr
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+interface TagEditorProps {
+  tags: string[];
+  onAdd: (tag: string) => void;
+  onRemove: (tag: string) => void;
+}
+
+/** Inline tag chips + input for authoring a page's tags. */
+function TagEditor({ tags, onAdd, onRemove }: TagEditorProps): JSX.Element {
+  const [input, setInput] = useState("");
+
+  const commit = useCallback(() => {
+    const t = normalizeTag(input);
+    if (t) onAdd(t);
+    setInput("");
+  }, [input, onAdd]);
+
+  return (
+    <div className="atlas-tags">
+      {tags.map((t) => (
+        <span key={t} className="atlas-tag-chip">
+          #{t}
+          <button
+            type="button"
+            className="atlas-tag-chip__x"
+            onClick={() => onRemove(t)}
+            aria-label={`Remove tag ${t}`}
+            title={`Remove #${t}`}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        className="atlas-tag-input"
+        value={input}
+        placeholder={tags.length ? "add tag…" : "add a tag…"}
+        aria-label="Add tag"
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Backspace" && input === "" && tags.length > 0) {
+            onRemove(tags[tags.length - 1]);
+          }
+        }}
+        onBlur={commit}
+      />
     </div>
   );
 }
@@ -218,6 +276,32 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
     store.createBlock({ parentId: currentId, order: children.length, type: "text", content: "", props: {} });
   }
 
+  const pageTags = current ? blockTagList(current.props) : [];
+
+  const setPageTags = useCallback(
+    (next: string[]) => {
+      if (!current) return;
+      store.upsertBlock({ id: current.id, props: { ...current.props, tags: next } });
+    },
+    [store, current],
+  );
+
+  // Fold any `#hashtags` found in a page's own or child block's text into the
+  // page's tags, so typing #topic surfaces it in nav/graph/database.
+  const mergeHashtags = useCallback(
+    (text: string) => {
+      if (!current) return;
+      const found = extractHashtags(text);
+      if (found.length === 0) return;
+      const existing = blockTagList(current.props);
+      const merged = unionTags(existing, found);
+      if (merged.length !== existing.length) {
+        store.upsertBlock({ id: current.id, props: { ...current.props, tags: merged } });
+      }
+    },
+    [store, current],
+  );
+
   return (
     <div className="atlas-editor">
       <aside className="atlas-pages">
@@ -251,6 +335,12 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
               onChange={(e) =>
                 store.upsertBlock({ id: current.id, content: e.target.value, props: { ...current.props, title: e.target.value } })
               }
+              onBlur={(e) => mergeHashtags(e.target.value)}
+            />
+            <TagEditor
+              tags={pageTags}
+              onAdd={(t) => setPageTags(unionTags(pageTags, [t]))}
+              onRemove={(t) => setPageTags(pageTags.filter((x) => x !== t))}
             />
             <div className="atlas-blocks">
               {children.map((b) => (
@@ -259,6 +349,7 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
                   block={b}
                   pageTitles={pageTitles}
                   onChange={(content) => store.upsertBlock({ id: b.id, content })}
+                  onCommit={(content) => mergeHashtags(content)}
                   onEnter={newChild}
                   onDelete={() => store.deleteBlock(b.id)}
                 />

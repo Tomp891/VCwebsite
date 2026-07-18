@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
 } from "react";
 import type { ChangeEvent } from "react";
 import { createLocalStore, Editor } from "@atlas/editor";
@@ -41,11 +40,11 @@ type CenterTab = "page" | "database";
 type GraphMode = "2d" | "3d";
 
 export function App() {
-  // Re-render on any store change so graph/nav/db stay in sync.
-  const version = useSyncExternalStore(
-    (cb) => store.subscribe(cb),
-    () => store.listBlocks().length + store.listEdges().length,
-  );
+  // Re-render on any store change so graph/nav/db stay in sync. We keep a
+  // monotonic mutation counter (not a block/edge count) so prop-only edits —
+  // e.g. changing a page's tags — also invalidate the derived memos below.
+  const [version, setVersion] = useState(0);
+  useEffect(() => store.subscribe(() => setVersion((v) => v + 1)), []);
 
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
   const [path, setPath] = useState<string[]>([]);
