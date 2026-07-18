@@ -1,0 +1,213 @@
+/*
+ * @atlas/db theme — self-contained copy of the design tokens from
+ * apps/web/src/theme.css (do not edit that file). Antique cartography:
+ * parchment surface, ink for explicit structure, faint pencil for AI.
+ */
+.atlas-db {
+  --parchment: #f4ecd8;
+  --parchment-2: #ece0c4;
+  --ink: #1e2a3a;
+  --ink-soft: #48566b;
+  --pencil: #8a7f6b;
+  --oxblood: #7b2d26;
+  --verdigris: #3c6e5b;
+  --line: #d8cbab;
+  --serif: Spectral, Georgia, "Times New Roman", serif;
+  --sans: Inter, system-ui, -apple-system, sans-serif;
+
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+}
+
+.atlas-db__section-title {
+  font-family: var(--serif);
+  font-variant: small-caps;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  font-size: 13px;
+  margin: 0 0 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+}
+
+/* ---------- NavTree ---------- */
+.atlas-nav {
+  background: var(--parchment-2);
+  padding: 14px;
+  border-radius: 6px;
+  min-width: 200px;
+}
+.atlas-nav__group { margin-bottom: 18px; }
+.atlas-nav__list { list-style: none; margin: 0; padding: 0; }
+.atlas-nav__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 13.5px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.atlas-nav__item:hover { background: rgba(30, 42, 58, 0.07); }
+.atlas-nav__item--active { background: rgba(123, 45, 38, 0.12); }
+.atlas-nav__glyph { color: var(--pencil); font-size: 12px; width: 14px; }
+.atlas-nav__count {
+  margin-left: auto;
+  color: var(--pencil);
+  font-family: var(--sans);
+  font-size: 11px;
+}
+.atlas-nav__tag {
+  font-family: var(--sans);
+  color: var(--ink-soft);
+}
+.atlas-nav__query {
+  font-style: italic;
+  color: var(--verdigris);
+}
+
+/* ---------- DatabaseView ---------- */
+.atlas-dbview { background: var(--parchment); padding: 14px; border-radius: 6px; }
+.atlas-dbview__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.atlas-dbview__toolbar label {
+  font-family: var(--serif);
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  font-size: 11.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.atlas-dbview select,
+.atlas-dbview input[type="text"] {
+  font-family: var(--sans);
+  font-size: 12.5px;
+  color: var(--ink);
+  background: var(--parchment-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 6px;
+}
+.atlas-dbview__seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.atlas-dbview__seg button {
+  background: var(--parchment-2);
+  border: none;
+  color: var(--ink-soft);
+  font-family: var(--serif);
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.atlas-dbview__seg button + button { border-left: 1px solid var(--line); }
+.atlas-dbview__seg button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--parchment);
+}
+
+.atlas-dbview__count {
+  margin-left: auto;
+  color: var(--pencil);
+  font-style: italic;
+  font-family: var(--serif);
+  font-size: 12px;
+}
+
+/* table */
+.atlas-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.atlas-table th,
+.atlas-table td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.atlas-table th {
+  font-family: var(--serif);
+  font-variant: small-caps;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+.atlas-table th:hover { color: var(--ink); }
+.atlas-table__sort { color: var(--oxblood); margin-left: 4px; }
+.atlas-table__group-row td {
+  font-family: var(--serif);
+  font-variant: small-caps;
+  letter-spacing: 0.05em;
+  color: var(--oxblood);
+  background: var(--parchment-2);
+  font-size: 12px;
+}
+.atlas-table__content { color: var(--ink); }
+.atlas-chip {
+  display: inline-block;
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--ink-soft);
+  background: var(--parchment-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin: 0 4px 2px 0;
+}
+.atlas-empty {
+  color: var(--pencil);
+  font-family: var(--serif);
+  font-style: italic;
+  padding: 12px;
+}
+
+/* board / kanban */
+.atlas-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px; }
+.atlas-board__col {
+  min-width: 200px;
+  flex: 0 0 220px;
+  background: var(--parchment-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+}
+.atlas-board__col-title {
+  font-family: var(--serif);
+  font-variant: small-caps;
+  letter-spacing: 0.05em;
+  color: var(--oxblood);
+  font-size: 12px;
+  margin: 0 0 8px;
+  display: flex;
+  justify-content: space-between;
+}
+.atlas-card {
+  background: var(--parchment);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 8px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 0 rgba(30, 42, 58, 0.05);
+}
+.atlas-card__content { font-size: 12.5px; color: var(--ink); margin-bottom: 6px; }
+
+.atlas-db__layout { display: flex; gap: 16px; align-items: flex-start; }
