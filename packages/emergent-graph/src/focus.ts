@@ -17,14 +17,21 @@ export function themeMembers(data: EmergentGraphData, clusterId: number): Set<st
   return new Set(theme?.blockIds ?? []);
 }
 
-/** Whether a node should be dimmed given the focused theme (null = no focus). */
+/**
+ * Whether a node should be dimmed given the focused theme (null = no focus).
+ * A node stays in-context if it is a hard member of the focused theme or a soft
+ * (multi-theme) member of it via `nodeAttrs.memberships`.
+ */
 export function isDimmed(
   data: EmergentGraphData,
   focusThemeId: number | null | undefined,
   nodeId: string,
 ): boolean {
   if (focusThemeId == null) return false;
-  return !themeMembers(data, focusThemeId).has(nodeId);
+  if (themeMembers(data, focusThemeId).has(nodeId)) return false;
+  const attrs = data.nodeAttrs[nodeId];
+  if (attrs?.clusterId === focusThemeId) return false;
+  return !attrs?.memberships?.some((m) => m.clusterId === focusThemeId);
 }
 
 /** Opacity helper for renderers: dimmed nodes fade to `dim`. */
