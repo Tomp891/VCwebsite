@@ -11,18 +11,44 @@
 
 import type { Block, BlockId, Cluster, ClusterResult, Clusterer, EmbeddingIndex } from "@atlas/contracts";
 
-function overlap(a: BlockId[], b: Set<BlockId>): number {
+/**
+ * Membership overlap between a candidate cluster and a previous cluster.
+ * `jaccard` is the primary similarity (|A∩B| / |A∪B|); `inter` is the raw shared
+ * count, kept so exact-Jaccard ties can be broken by absolute overlap.
+ */
+function membershipOverlap(a: Set<BlockId>, b: Set<BlockId>): { jaccard: number; inter: number } {
+  // iterate the smaller set for speed
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
   let inter = 0;
-  for (const id of a) if (b.has(id)) inter++;
-  if (inter === 0) return 0;
-  const union = a.length + b.size - inter;
-  return union === 0 ? 0 : inter / union; // Jaccard
+  for (const id of small) if (large.has(id)) inter++;
+  if (inter === 0) return { jaccard: 0, inter: 0 };
+  const union = a.size + b.size - inter;
+  return { jaccard: union === 0 ? 0 : inter / union, inter };
+}
+
+/** Highest cluster id present in a result, or -1 for an empty partition. */
+function maxClusterId(clusters: Cluster[]): number {
+  let m = -1;
+  for (const c of clusters) if (c.id > m) m = c.id;
+  return m;
 }
 
 /**
  * Remap `next`'s cluster ids to match `prev` where clusters overlap, greedily by
- * descending Jaccard overlap. `nextFreeId` seeds the id counter for brand-new
- * clusters; the returned `nextFreeId` should be fed into the following call.
+ * descending membership overlap. Each previous id is claimed by at most one new
+ * cluster (its best match), so:
+ *   - a community that persists keeps its id even if the algorithm relabels it;
+ *   - when a community splits, the child with the largest overlap inherits the
+ *     id and the other child(ren) get fresh ids;
+ *   - when two communities merge, the merged cluster keeps the single best-
+ *     matching id and the other id is retired;
+ *   - removed communities simply retire their id (it is never recycled for a
+ *     different community, avoiding identity confusion).
+ *
+ * Overlap is ranked by Jaccard, then by raw shared count, then by (prevId,
+ * nextId) so the outcome is fully deterministic under ties. `nextFreeId` seeds
+ * the id counter for brand-new clusters and only ever grows; feed the returned
+ * value into the following call so fresh ids stay monotonic across runs.
  */
 export function stabilizeClusterIds(
   prev: ClusterResult | undefined,
@@ -30,20 +56,23 @@ export function stabilizeClusterIds(
   nextFreeId = 0,
 ): { result: ClusterResult; nextFreeId: number } {
   if (!prev) {
-    const maxId = next.clusters.reduce((m, c) => Math.max(m, c.id), -1);
+    const maxId = maxClusterId(next.clusters);
     return { result: next, nextFreeId: Math.max(nextFreeId, maxId + 1) };
   }
 
   const prevSets = prev.clusters.map((c) => ({ id: c.id, members: new Set(c.blockIds) }));
+  const nextSets = next.clusters.map((c) => ({ id: c.id, members: new Set(c.blockIds) }));
 
-  const candidates: Array<{ nextId: number; prevId: number; score: number }> = [];
-  for (const nc of next.clusters) {
+  const candidates: Array<{ nextId: number; prevId: number; jaccard: number; inter: number }> = [];
+  for (const nc of nextSets) {
     for (const pc of prevSets) {
-      const score = overlap(nc.blockIds, pc.members);
-      if (score > 0) candidates.push({ nextId: nc.id, prevId: pc.id, score });
+      const { jaccard, inter } = membershipOverlap(nc.members, pc.members);
+      if (inter > 0) candidates.push({ nextId: nc.id, prevId: pc.id, jaccard, inter });
     }
   }
-  candidates.sort((a, b) => b.score - a.score || a.prevId - b.prevId || a.nextId - b.nextId);
+  candidates.sort(
+    (a, b) => b.jaccard - a.jaccard || b.inter - a.inter || a.prevId - b.prevId || a.nextId - b.nextId,
+  );
 
   const remap = new Map<number, number>(); // next id -> stable id
   const usedPrev = new Set<number>();
@@ -53,7 +82,9 @@ export function stabilizeClusterIds(
     usedPrev.add(prevId);
   }
 
-  let free = Math.max(nextFreeId, prev.clusters.reduce((m, c) => Math.max(m, c.id), -1) + 1);
+  // Fresh ids never collide with retired prev ids or with each other, and never
+  // regress below a previously handed-out id.
+  let free = Math.max(nextFreeId, maxClusterId(prev.clusters) + 1);
   for (const nc of next.clusters) {
     if (!remap.has(nc.id)) remap.set(nc.id, free++);
   }
