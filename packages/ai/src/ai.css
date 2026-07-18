@@ -53,6 +53,17 @@
   border-radius: 6px;
   padding: 10px 12px;
   background: color-mix(in srgb, var(--parchment) 70%, transparent);
+  transition: border-color 0.35s ease, background-color 0.35s ease, opacity 0.35s ease, transform 0.35s ease;
+}
+
+/* Accept "inks it": the dashed pencil border hardens to solid verdigris ink
+   and the row lifts away as it is promoted to an edge. */
+.atlas-ai__row.is-inking {
+  border-style: solid;
+  border-color: var(--verdigris);
+  background: color-mix(in srgb, var(--verdigris) 12%, var(--parchment));
+  opacity: 0;
+  transform: translateX(8px);
 }
 
 .atlas-ai__row-head {

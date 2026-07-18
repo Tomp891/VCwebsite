@@ -140,9 +140,13 @@ function BlockRow({ block, pageTitles, onChange, onEnter, onDelete }: BlockRowPr
 
 export interface EditorProps {
   store: EditorStore;
+  /** Controlled page selection. When set, the editor opens this page. */
+  pageId?: BlockId | null;
+  /** Notifies the host that a page was opened (page list / backlink click). */
+  onOpenPage?: (id: BlockId) => void;
 }
 
-export function Editor({ store }: EditorProps): JSX.Element {
+export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element {
   const { blocks } = useStoreSnapshot(store);
 
   const pages = useMemo(
@@ -151,8 +155,20 @@ export function Editor({ store }: EditorProps): JSX.Element {
   );
   const [selectedId, setSelectedId] = useState<BlockId | null>(null);
 
-  const currentId = selectedId && pages.some((p) => p.id === selectedId) ? selectedId : pages[0]?.id ?? null;
+  // Prefer the controlled `pageId` when it names a real page, else the last
+  // internal selection, else the first page.
+  const controlled = pageId && pages.some((p) => p.id === pageId) ? pageId : null;
+  const internal = selectedId && pages.some((p) => p.id === selectedId) ? selectedId : null;
+  const currentId = controlled ?? internal ?? pages[0]?.id ?? null;
   const current = currentId ? blocks.find((b) => b.id === currentId) ?? null : null;
+
+  const open = useCallback(
+    (id: BlockId) => {
+      setSelectedId(id);
+      onOpenPage?.(id);
+    },
+    [onOpenPage],
+  );
 
   const pageTitles = useMemo(() => pages.map(blockTitle).filter(Boolean), [pages]);
 
@@ -161,19 +177,40 @@ export function Editor({ store }: EditorProps): JSX.Element {
     [blocks, currentId],
   );
 
+  // Backlinks: one row per source *page*, deduped, with a snippet from the
+  // linking block. Walks parentId so a link inside a child block still credits
+  // its containing page.
   const backlinks = useMemo(() => {
     if (!currentId) return [];
+    const byId = new Map(blocks.map((b) => [b.id, b]));
+    const pageOf = (id: BlockId): Block | undefined => {
+      let cur = byId.get(id);
+      const guard = new Set<BlockId>();
+      while (cur && cur.parentId !== null && !guard.has(cur.id)) {
+        guard.add(cur.id);
+        cur = byId.get(cur.parentId);
+      }
+      return cur;
+    };
     const srcIds = store
       .listEdges()
       .filter((e) => e.dstBlockId === currentId && e.type === "link" && e.tier === "explicit")
       .map((e) => e.srcBlockId);
-    const unique = [...new Set(srcIds)];
-    return unique.map((id) => blocks.find((b) => b.id === id)).filter((b): b is Block => Boolean(b));
+    const seen = new Set<BlockId>();
+    const rows: Array<{ page: Block; snippet: string }> = [];
+    for (const srcId of srcIds) {
+      const src = byId.get(srcId);
+      const page = pageOf(srcId);
+      if (!src || !page || page.id === currentId || seen.has(page.id)) continue;
+      seen.add(page.id);
+      rows.push({ page, snippet: src.content.trim().slice(0, 100) });
+    }
+    return rows;
   }, [store, currentId, blocks]);
 
   function newPage(): void {
     const page = store.createBlock({ parentId: null, order: pages.length, type: "page", content: "Untitled", props: { title: "Untitled" } });
-    setSelectedId(page.id);
+    open(page.id);
   }
 
   function newChild(): void {
@@ -195,7 +232,7 @@ export function Editor({ store }: EditorProps): JSX.Element {
             <li
               key={p.id}
               className={p.id === currentId ? "is-active" : undefined}
-              onClick={() => setSelectedId(p.id)}
+              onClick={() => open(p.id)}
             >
               {blockTitle(p) || "Untitled"}
             </li>
@@ -239,10 +276,10 @@ export function Editor({ store }: EditorProps): JSX.Element {
                 <p className="atlas-empty">No backlinks yet.</p>
               ) : (
                 <ul className="atlas-backlink-list">
-                  {backlinks.map((b) => (
-                    <li key={b.id} onClick={() => b.parentId === null && setSelectedId(b.id)}>
-                      <span className="atlas-backlink-title">{blockTitle(b) || "Untitled"}</span>
-                      <span className="atlas-backlink-snippet">{b.content.slice(0, 80)}</span>
+                  {backlinks.map(({ page, snippet }) => (
+                    <li key={page.id} onClick={() => open(page.id)}>
+                      <span className="atlas-backlink-title">{blockTitle(page) || "Untitled"}</span>
+                      {snippet && <span className="atlas-backlink-snippet">{snippet}</span>}
                     </li>
                   ))}
                 </ul>

@@ -25,8 +25,9 @@ export function blockTitle(block: { content: string; props: Record<string, unkno
 }
 
 /**
- * Resolve a wikilink text to the id of the first block whose title/content
- * starts with the link text (case-insensitive). Returns undefined if none match.
+ * Resolve a wikilink text to a block id. An exact (case-insensitive) title match
+ * wins so links stay stable and unambiguous; otherwise the first title that
+ * starts with the link text is used. Returns undefined if none match.
  */
 export function resolveWikilink(
   linkText: string,
@@ -34,8 +35,11 @@ export function resolveWikilink(
 ): string | undefined {
   const needle = linkText.trim().toLowerCase();
   if (!needle) return undefined;
+  let prefixMatch: string | undefined;
   for (const block of blocks) {
-    if (blockTitle(block).toLowerCase().startsWith(needle)) return block.id;
+    const title = blockTitle(block).toLowerCase();
+    if (title === needle) return block.id;
+    if (prefixMatch === undefined && title.startsWith(needle)) prefixMatch = block.id;
   }
-  return undefined;
+  return prefixMatch;
 }

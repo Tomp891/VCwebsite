@@ -19,14 +19,39 @@ export interface Graph2DProps {
   data: GraphData;
   selectedId?: string;
   onSelect?: (id: string) => void;
+  /** Optional display names for cluster ids, drawn as constellation labels. */
+  clusterLabels?: Record<number, string>;
 }
 
 /** Antique-cartography palette. Node fill is picked by cluster id. */
 const CLUSTER_COLORS = ["#1e2a3a", "#7b2d26", "#3c6e5b", "#48566b", "#8a7f6b"]; // ink, oxblood, verdigris, ink-soft, pencil
 const PARCHMENT = "#f4ecd8";
 const INK = "#1e2a3a";
+const VERDIGRIS = "#3c6e5b";
 const PENCIL = "#8a7f6b";
 const SERIF = 'Spectral, Georgia, "Times New Roman", serif';
+
+/** Andrew's monotone-chain convex hull. */
+function convexHull(points: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
+  if (points.length < 3) return points;
+  const pts = [...points].sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x));
+  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: typeof pts = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: typeof pts = [];
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  lower.pop();
+  upper.pop();
+  return lower.concat(upper);
+}
 
 type GNode = NodeObject<GraphNode>;
 type GLink = LinkObject<GraphNode, GraphLink>;
@@ -84,7 +109,7 @@ function useContainerSize(): [
 }
 
 export function Graph2D(props: Graph2DProps): JSX.Element {
-  const { data, selectedId, onSelect } = props;
+  const { data, selectedId, onSelect, clusterLabels } = props;
   const [containerRef, size] = useContainerSize();
 
   // Feed the force engine its own copy — it mutates nodes/links (x, y, refs)
@@ -188,10 +213,66 @@ export function Graph2D(props: Graph2DProps): JSX.Element {
         // Faint dashed "pencil"; opacity carries confidence.
         return hexToRgba(PENCIL, (faded ? 0.25 : 1) * link.confidence);
       }
-      // explicit + inferred_accepted = solid ink.
-      return hexToRgba(INK, faded ? 0.15 : 0.85);
+      // AI-accepted links are inked in verdigris; human links in dark ink.
+      const base = link.tier === "inferred_accepted" ? VERDIGRIS : INK;
+      return hexToRgba(base, faded ? 0.15 : 0.85);
     },
     [incidentLinks, isFocused],
+  );
+
+  // Draw faint "constellation" hulls + serif labels behind the nodes.
+  const paintClusters = useCallback(
+    (ctx: CanvasRenderingContext2D, globalScale: number) => {
+      if (isFocused) return; // hulls would clutter the focused neighborhood
+      const groups = new Map<number, Array<{ x: number; y: number }>>();
+      for (const raw of graphData.nodes) {
+        const n = raw as GNode; // force engine adds x/y at runtime
+        if (n.x == null || n.y == null) continue;
+        const arr = groups.get(n.cluster) ?? [];
+        arr.push({ x: n.x, y: n.y });
+        groups.set(n.cluster, arr);
+      }
+      for (const [cluster, pts] of groups) {
+        if (pts.length < 2) continue;
+        const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+        const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+        const color = clusterColor(cluster);
+        const hull = convexHull(pts).map((p) => {
+          // push each hull point outward from the centroid for padding.
+          const dx = p.x - cx;
+          const dy = p.y - cy;
+          const d = Math.hypot(dx, dy) || 1;
+          const pad = 14;
+          return { x: p.x + (dx / d) * pad, y: p.y + (dy / d) * pad };
+        });
+        if (hull.length >= 3) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(hull[0].x, hull[0].y);
+          for (const p of hull.slice(1)) ctx.lineTo(p.x, p.y);
+          ctx.closePath();
+          ctx.fillStyle = hexToRgba(color, 0.05);
+          ctx.fill();
+          ctx.lineWidth = 1 / globalScale;
+          ctx.setLineDash([4 / globalScale, 4 / globalScale]);
+          ctx.strokeStyle = hexToRgba(color, 0.35);
+          ctx.stroke();
+          ctx.restore();
+        }
+        const name = clusterLabels?.[cluster];
+        if (name && globalScale > 0.35) {
+          ctx.save();
+          const fontSize = 12 / globalScale;
+          ctx.font = `italic ${fontSize}px ${SERIF}`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = hexToRgba(color, 0.55);
+          ctx.fillText(name.toUpperCase(), cx, cy);
+          ctx.restore();
+        }
+      }
+    },
+    [graphData, clusterLabels, isFocused],
   );
 
   const linkWidth = useCallback(
@@ -227,6 +308,7 @@ export function Graph2D(props: Graph2DProps): JSX.Element {
           nodeLabel={(n: GNode) => n.label}
           nodeCanvasObject={paintNode}
           nodePointerAreaPaint={paintNodePointerArea}
+          onRenderFramePre={paintClusters}
           linkColor={linkColor}
           linkWidth={linkWidth}
           linkLineDash={linkDash}
@@ -236,10 +318,15 @@ export function Graph2D(props: Graph2DProps): JSX.Element {
           }}
         />
       )}
-      <p className="atlas-graph2d__hint">
-        ink = explicit · pencil = inferred — click a node to focus its
-        neighborhood
-      </p>
+      {data.nodes.length === 0 && (
+        <p className="atlas-graph2d__empty">An empty atlas — write a note to chart the first star.</p>
+      )}
+      <div className="atlas-graph2d__legend">
+        <span><span className="atlas-graph2d__ink atlas-graph2d__ink--human" /> human · ink</span>
+        <span><span className="atlas-graph2d__ink atlas-graph2d__ink--ai" /> AI-accepted</span>
+        <span><span className="atlas-graph2d__ink atlas-graph2d__ink--pencil" /> inferred · pencil</span>
+      </div>
+      <p className="atlas-graph2d__hint">click a node to focus its neighborhood</p>
     </div>
   );
 }
