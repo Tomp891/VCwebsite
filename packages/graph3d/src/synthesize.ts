@@ -19,6 +19,8 @@ export interface AtlasNode extends NodeObject {
   kind: NodeKind;
   /** fixed Z so each layer stays on its own plane. */
   fz: number;
+  /** ids of adjacent nodes (undirected) — precomputed for cheap n-hop focus. */
+  neighborIds: string[];
 }
 
 export interface AtlasLink extends LinkObject<AtlasNode> {
@@ -53,6 +55,7 @@ export function toLayeredGraph(data: GraphData): LayeredGraph {
     layer: "atom",
     kind: "block",
     fz: layerZ.atom,
+    neighborIds: [],
   }));
 
   const links: AtlasLink[] = data.links.map((l: GraphLink) => ({
@@ -78,6 +81,7 @@ export function toLayeredGraph(data: GraphData): LayeredGraph {
       layer: "concept",
       kind: "concept",
       fz: layerZ.concept,
+      neighborIds: [],
     };
   });
 
@@ -89,6 +93,7 @@ export function toLayeredGraph(data: GraphData): LayeredGraph {
     layer: "domain",
     kind: "domain",
     fz: layerZ.domain,
+    neighborIds: [],
   };
 
   // atom -> concept and concept -> domain structural up-links.
@@ -100,8 +105,19 @@ export function toLayeredGraph(data: GraphData): LayeredGraph {
     upLinks.push({ source: concept.id, target: domainId, style: "structure", confidence: 1 });
   }
 
-  return {
-    nodes: [...atoms, ...conceptNodes, domainNode],
-    links: [...links, ...upLinks],
-  };
+  const nodes = [...atoms, ...conceptNodes, domainNode];
+  const allLinks = [...links, ...upLinks];
+
+  // precompute undirected adjacency (matches the vasturiano highlight pattern) so
+  // focus / n-hop filtering is O(1) per node.
+  const byId = new Map<string, AtlasNode>(nodes.map((n) => [n.id, n]));
+  for (const link of allLinks) {
+    const a = byId.get(link.source);
+    const b = byId.get(link.target);
+    if (!a || !b) continue;
+    a.neighborIds.push(b.id);
+    b.neighborIds.push(a.id);
+  }
+
+  return { nodes, links: allLinks };
 }
