@@ -12,7 +12,8 @@ import { createLocalStore, Editor } from "@atlas/editor";
 import { Graph2D } from "@atlas/graph";
 import { SuggestionsPanel } from "@atlas/ai";
 import { DatabaseView, NavTree, allTags, blockTags } from "@atlas/db";
-import { ChatPanel, createRetriever } from "@atlas/rag";
+import { ChatPanel, createRetriever, DEFAULT_TOP_K } from "@atlas/rag";
+import type { EditorStore, Retriever } from "@atlas/contracts";
 import { storeToGraphData } from "./graphData.js";
 import { downloadExport, importFromJson } from "./persistence.js";
 import { LinksPanel } from "./LinksPanel.js";
@@ -40,6 +41,24 @@ const CLUSTER_LABELS: Record<number, string> = {
 type CenterTab = "page" | "database";
 type GraphMode = "2d" | "3d" | "emergent";
 
+// How wide a net the "Ask" retrieval casts, inferred from the question itself.
+const BROAD_TOP_K = 12;
+const TAG_SCOPE_CAP = 20;
+const BROAD_RE =
+  /\b(all|alle|alles|overzicht|overview|summar|samenvat|vergelijk|compare|thema|theme|themes|everything|elke|every|across|gemeenschappelijk|common)\b/;
+
+/** An EditorStore view narrowed to a subset of block ids (for tag-scoped Ask). */
+function scopedStore(base: EditorStore, allow: Set<string>): EditorStore {
+  return {
+    ...base,
+    listBlocks: () => base.listBlocks().filter((b) => allow.has(b.id)),
+    listEdges: () =>
+      base
+        .listEdges()
+        .filter((e) => allow.has(e.srcBlockId) && allow.has(e.dstBlockId)),
+  };
+}
+
 export function App() {
   // Re-render on any store change so graph/nav/db stay in sync. We keep a
   // monotonic mutation counter (not a block/edge count) so prop-only edits —
@@ -57,8 +76,35 @@ export function App() {
 
   // AI engine (local Ollama with mock fallback) shared by suggestions + Ask.
   const ai = useAiProvider();
-  const retriever = useMemo(
-    () => createRetriever(store, ai.provider),
+  // Adaptive-scope retrieval: the question decides how wide to look. Mentioning
+  // an existing tag scopes to those notes; broad words ("alle", "overzicht",
+  // "vergelijk", "thema's") widen the net; otherwise the default small top-K.
+  const retriever = useMemo<Retriever>(
+    () => ({
+      retrieve(query: string) {
+        const q = query.toLowerCase();
+        const mentioned = allTags(store.listBlocks()).filter((t) =>
+          q.includes(t.toLowerCase()),
+        );
+        if (mentioned.length > 0) {
+          const active = new Set(mentioned);
+          const allow = new Set(
+            store
+              .listBlocks()
+              .filter((b) => blockTags(b).some((t) => active.has(t)))
+              .map((b) => b.id),
+          );
+          if (allow.size > 0) {
+            const k = Math.min(allow.size, TAG_SCOPE_CAP);
+            return createRetriever(scopedStore(store, allow), ai.provider, k).retrieve(query);
+          }
+        }
+        const topK = BROAD_RE.test(q)
+          ? Math.min(store.listBlocks().length, BROAD_TOP_K)
+          : DEFAULT_TOP_K;
+        return createRetriever(store, ai.provider, topK).retrieve(query);
+      },
+    }),
     [ai.provider],
   );
 
