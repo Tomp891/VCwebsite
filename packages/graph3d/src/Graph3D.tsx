@@ -127,6 +127,7 @@ function buildPencilLine(): THREE.Line {
 
 export function Graph3D({ data, selectedId, onSelect }: Graph3DProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<ForceGraph3DInstance | null>(null);
   const selectedRef = useRef<string | undefined>(selectedId);
   const onSelectRef = useRef<Graph3DProps["onSelect"]>(onSelect);
@@ -136,9 +137,11 @@ export function Graph3D({ data, selectedId, onSelect }: Graph3DProps): JSX.Eleme
 
   // create the instance once.
   useEffect(() => {
-    const el = containerRef.current;
+    const el = canvasRef.current;
     if (!el) return;
 
+    // ForceGraph3D replaces its mount element's children, so give it a dedicated
+    // inner div and keep the caption/legend as siblings in the outer container.
     const fg = new ForceGraph3D(el, { controlType: "orbit" });
     graphRef.current = fg;
 
@@ -222,6 +225,7 @@ export function Graph3D({ data, selectedId, onSelect }: Graph3DProps): JSX.Eleme
 
   return (
     <div ref={containerRef} className="atlas-graph3d">
+      <div ref={canvasRef} className="atlas-graph3d__canvas" />
       <div className="atlas-graph3d__caption">Living Atlas — atoms · concepts · domain</div>
       <div className="atlas-graph3d__legend">
         <div className="atlas-graph3d__legend-row">
