@@ -3,6 +3,7 @@ import type { AIProvider } from "@atlas/contracts";
 import {
   createFallbackProvider,
   createMockProvider,
+  createOllamaProvider,
   probeOllama,
 } from "./provider.js";
 
@@ -47,6 +48,50 @@ describe("createFallbackProvider", () => {
     expect(onFallback).toHaveBeenCalledTimes(2);
     expect(onFallback).toHaveBeenCalledWith("chat", expect.any(Error));
     expect(onFallback).toHaveBeenCalledWith("embed", expect.any(Error));
+  });
+});
+
+describe("createOllamaProvider embed", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("adds the task prefix, batches, and preserves input order", async () => {
+    const prompts: string[] = [];
+    // Respond with a vector whose first component encodes the input index so we
+    // can assert output order matches input order despite concurrent requests.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(init.body as string) as { prompt: string };
+        prompts.push(body.prompt);
+        const n = Number(body.prompt.replace(/\D/g, ""));
+        // Stagger completion so earlier requests resolve later.
+        await new Promise((r) => setTimeout(r, (5 - n) * 2));
+        return new Response(JSON.stringify({ embedding: [n] }), { status: 200 });
+      }),
+    );
+
+    const provider = createOllamaProvider({ embedModel: "nomic-embed-text" });
+    const vecs = await provider.embed(["t1", "t2", "t3", "t4"]);
+
+    expect(vecs).toEqual([[1], [2], [3], [4]]);
+    expect(prompts).toContain("search_document: t1");
+    expect(prompts.every((p) => p.startsWith("search_document: "))).toBe(true);
+  });
+
+  it("honours a custom (or empty) prefix", async () => {
+    const prompts: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        prompts.push((JSON.parse(init.body as string) as { prompt: string }).prompt);
+        return new Response(JSON.stringify({ embedding: [0] }), { status: 200 });
+      }),
+    );
+    const provider = createOllamaProvider({ embedPrefix: "" });
+    await provider.embed(["raw"]);
+    expect(prompts).toEqual(["raw"]);
   });
 });
 

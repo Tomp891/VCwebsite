@@ -6,7 +6,8 @@ import type {
   Block,
   Retriever,
 } from "@atlas/contracts";
-import { answer } from "./answer.js";
+import { answer, type PriorTurn } from "./answer.js";
+import { augmentForRetrieval } from "./intent.js";
 import "./rag.css";
 
 export interface ChatPanelProps {
@@ -23,6 +24,10 @@ export interface ChatPanelProps {
    *  lists). When it returns a string the model is skipped, guaranteeing correct
    *  numbers. Return null to fall through to the normal GraphRAG path. */
   metaAnswer?: (query: string) => string | null;
+  /** Optional emergent theme summaries, added to the prompt for broad questions. */
+  getThemes?: () => string[];
+  /** How many prior turns to feed back as conversational memory. */
+  memoryTurns?: number;
 }
 
 /** A cited source, captured at answer time so history survives edits. */
@@ -87,6 +92,8 @@ export function ChatPanel({
   onSelect,
   getOverview,
   metaAnswer,
+  getThemes,
+  memoryTurns = 3,
 }: ChatPanelProps): JSX.Element {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -119,8 +126,22 @@ export function ChatPanel({
           onPath?.([]);
           return;
         }
-        const ctx = await retriever.retrieve(trimmed);
-        const ans = await answer(trimmed, ctx, provider, getOverview?.());
+        // Conversational memory: the newest `memoryTurns` exchanges, oldest→
+        // newest, both to resolve follow-ups during retrieval and as prompt
+        // context. `history` is stored newest-first, so reverse the head slice.
+        const recent: PriorTurn[] = history
+          .slice(0, memoryTurns)
+          .reverse()
+          .map((t) => ({ question: t.question, answer: t.answer }));
+        const retrievalQuery = augmentForRetrieval(
+          trimmed,
+          recent.map((t) => t.question),
+        );
+        const ctx = await retriever.retrieve(retrievalQuery);
+        const ans = await answer(trimmed, ctx, provider, getOverview?.(), {
+          history: recent,
+          themes: getThemes?.(),
+        });
         const byId = new Map(ctx.blocks.map((b) => [b.id, b]));
         const sources: StoredSource[] = ans.citations
           .map((id) => byId.get(id))
@@ -143,7 +164,7 @@ export function ChatPanel({
         setBusy(false);
       }
     },
-    [retriever, provider, busy, onPath, getOverview, metaAnswer],
+    [retriever, provider, busy, onPath, getOverview, metaAnswer, getThemes, memoryTurns, history],
   );
 
   const clearHistory = useCallback(() => setHistory([]), []);

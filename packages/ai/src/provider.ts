@@ -95,6 +95,15 @@ export interface OllamaOptions {
   baseUrl?: string;
   embedModel?: string;
   chatModel?: string;
+  /**
+   * Task prefix prepended to every embed input. Models like `nomic-embed-text`
+   * are trained to require one (`search_document:` / `search_query:`); omitting
+   * it measurably degrades retrieval. Applied uniformly so query and document
+   * vectors stay in the same, comparable space. Set "" to disable.
+   */
+  embedPrefix?: string;
+  /** max concurrent embed requests (the /api/embeddings endpoint is 1/text). */
+  embedConcurrency?: number;
 }
 
 interface OllamaEmbeddingResponse {
@@ -188,22 +197,38 @@ export function createOllamaProvider(opts: OllamaOptions = {}): AIProvider {
   const baseUrl = (opts.baseUrl ?? "http://localhost:11434").replace(/\/$/, "");
   const embedModel = opts.embedModel ?? "nomic-embed-text";
   const chatModel = opts.chatModel ?? "llama3.2";
+  const embedPrefix = opts.embedPrefix ?? "search_document: ";
+  const concurrency = Math.max(1, opts.embedConcurrency ?? 8);
 
   return {
     async embed(texts: string[]): Promise<number[][]> {
-      const out: number[][] = [];
-      for (const text of texts) {
+      const embedOne = async (text: string): Promise<number[]> => {
         const res = await fetch(`${baseUrl}/api/embeddings`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ model: embedModel, prompt: text }),
+          body: JSON.stringify({ model: embedModel, prompt: `${embedPrefix}${text}` }),
         });
         if (!res.ok) {
           throw new Error(`Ollama embeddings failed: ${res.status} ${res.statusText}`);
         }
         const data = (await res.json()) as OllamaEmbeddingResponse;
-        out.push(data.embedding);
+        return data.embedding;
+      };
+
+      // Bounded-concurrency pool: /api/embeddings takes one prompt per call, so
+      // fan out several in flight instead of one strictly-sequential round-trip
+      // per text (the previous behaviour, O(N) latency per question).
+      const out = new Array<number[]>(texts.length);
+      let next = 0;
+      async function worker(): Promise<void> {
+        while (next < texts.length) {
+          const i = next++;
+          out[i] = await embedOne(texts[i]);
+        }
       }
+      await Promise.all(
+        Array.from({ length: Math.min(concurrency, texts.length) }, () => worker()),
+      );
       return out;
     },
     async chat(prompt: string): Promise<string> {

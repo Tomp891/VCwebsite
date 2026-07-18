@@ -12,8 +12,15 @@ import { createLocalStore, Editor } from "@atlas/editor";
 import { Graph2D } from "@atlas/graph";
 import { SuggestionsPanel } from "@atlas/ai";
 import { DatabaseView, NavTree, allTags, blockTags } from "@atlas/db";
-import { ChatPanel, createRetriever, DEFAULT_TOP_K } from "@atlas/rag";
+import {
+  ChatPanel,
+  createRetriever,
+  DEFAULT_TOP_K,
+  classifyScope,
+  type RetrieverOptions,
+} from "@atlas/rag";
 import type { EditorStore, Retriever } from "@atlas/contracts";
+import { useRagEngine } from "./ai/useRagEngine.js";
 import { storeToGraphData } from "./graphData.js";
 import { downloadExport, importFromJson } from "./persistence.js";
 import { LinksPanel } from "./LinksPanel.js";
@@ -44,8 +51,16 @@ type GraphMode = "2d" | "3d" | "emergent";
 // How wide a net the "Ask" retrieval casts, inferred from the question itself.
 const BROAD_TOP_K = 12;
 const TAG_SCOPE_CAP = 20;
-const BROAD_RE =
-  /\b(all|alle|alles|overzicht|overview|summar|samenvat|vergelijk|compare|thema|theme|themes|everything|elke|every|across|gemeenschappelijk|common)\b/;
+
+// Retrieval tuning shared across every Ask query (blended vector + lexical +
+// graph-importance, MMR-diversified, with confidence-gated 1-hop expansion).
+const RETRIEVER_TUNING = {
+  rankWeight: 0.25,
+  lexicalWeight: 0.35,
+  mmrLambda: 0.7,
+  minEdgeConfidence: 0.3,
+  maxNeighboursPerSeed: 3,
+} as const;
 
 /** An EditorStore view narrowed to a subset of block ids (for tag-scoped Ask). */
 function scopedStore(base: EditorStore, allow: Set<string>): EditorStore {
@@ -76,12 +91,20 @@ export function App() {
 
   // AI engine (local Ollama with mock fallback) shared by suggestions + Ask.
   const ai = useAiProvider();
+  // Cached embedding index + graph ranker + clusters + theme summaries, kept
+  // warm and re-synced (only changed blocks re-embed) as the store mutates.
+  const rag = useRagEngine(ai.provider, ai.config, store.listBlocks(), version);
+  const ragRef = useRef(rag);
+  ragRef.current = rag;
   // Adaptive-scope retrieval: the question decides how wide to look. Mentioning
-  // an existing tag scopes to those notes; broad words ("alle", "overzicht",
-  // "vergelijk", "thema's") widen the net; otherwise the default small top-K.
+  // an existing tag scopes to those notes; an embedding-based intent classifier
+  // (paraphrase-aware, EN/NL) widens broad/overview questions and routes them
+  // across topic clusters; otherwise the default small top-K.
   const retriever = useMemo<Retriever>(
     () => ({
-      retrieve(query: string) {
+      async retrieve(query: string) {
+        const { index, ranker, clusters } = ragRef.current;
+        const base: RetrieverOptions = { ...RETRIEVER_TUNING, index, ranker };
         const q = query.toLowerCase();
         const mentioned = allTags(store.listBlocks()).filter((t) =>
           q.includes(t.toLowerCase()),
@@ -96,13 +119,26 @@ export function App() {
           );
           if (allow.size > 0) {
             const k = Math.min(allow.size, TAG_SCOPE_CAP);
-            return createRetriever(scopedStore(store, allow), ai.provider, k).retrieve(query);
+            return createRetriever(scopedStore(store, allow), ai.provider, {
+              ...base,
+              topK: k,
+            }).retrieve(query);
           }
         }
-        const topK = BROAD_RE.test(q)
+        const scope = await classifyScope(query, {
+          embed: (texts) => ai.provider.embed(texts),
+        });
+        const broad = scope === "broad";
+        const topK = broad
           ? Math.min(store.listBlocks().length, BROAD_TOP_K)
           : DEFAULT_TOP_K;
-        return createRetriever(store, ai.provider, topK).retrieve(query);
+        const routing =
+          broad && clusters ? { clusters, perClusterK: 2 } : {};
+        return createRetriever(store, ai.provider, {
+          ...base,
+          topK,
+          ...routing,
+        }).retrieve(query);
       },
     }),
     [ai.provider],
@@ -437,6 +473,7 @@ export function App() {
           onSelect={setSelectedId}
           getOverview={getChatOverview}
           metaAnswer={answerMeta}
+          getThemes={() => ragRef.current.themeSummaries}
         />
       </aside>
     </div>
