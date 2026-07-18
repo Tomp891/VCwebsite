@@ -75,12 +75,14 @@
 .atlas-page-title,
 .atlas-block-input {
   width: 100%;
+  box-sizing: border-box;
   border: none;
   background: transparent;
   color: var(--ink);
   resize: none;
   font-family: var(--serif);
   overflow: hidden;
+  display: block;
 }
 .atlas-page-title:focus,
 .atlas-block-input:focus {

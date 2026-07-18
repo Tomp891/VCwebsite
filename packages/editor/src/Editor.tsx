@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { Block, BlockId, EditorStore } from "@atlas/contracts";
 import { blockTitle } from "./wikilinks.js";
@@ -57,13 +57,15 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, au
   }, [autoFocus]);
 
   // Grow the textarea to fit its content so a bullet can hold multiple lines
-  // (one bullet per topic) instead of scrolling inside a single row.
-  useEffect(() => {
+  // (one bullet per topic) instead of scrolling inside a single row. Runs
+  // before paint so a freshly typed line is never clipped or hidden.
+  const autoGrow = useCallback(() => {
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
-  }, [block.content]);
+  }, []);
+  useLayoutEffect(autoGrow, [autoGrow, block.content]);
 
   const matches = useMemo(() => {
     if (!suggest) return [];
@@ -142,6 +144,10 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, au
       requestAnimationFrame(() => {
         el.focus();
         el.setSelectionRange(pos, pos);
+        autoGrow();
+        // Keep the just-added line on screen instead of forcing the user to
+        // scroll to find where the Enter went.
+        el.scrollIntoView({ block: "nearest" });
         pending.current = null;
       });
       return;
