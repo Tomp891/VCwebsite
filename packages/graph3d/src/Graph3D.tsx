@@ -151,7 +151,7 @@ export function Graph3D({ data, selectedId, onSelect, filter }: Graph3DProps): J
 
   const recompute = () => {
     if (layeredRef.current) {
-      compiledRef.current = compileFilter(layeredRef.current, filterRef.current, selectedRef.current);
+      compiledRef.current = compileFilter(layeredRef.current, filterRef.current);
     }
   };
 
@@ -237,8 +237,7 @@ export function Graph3D({ data, selectedId, onSelect, filter }: Graph3DProps): J
         .linkColor(linkCol)
         .linkWidth(linkW);
       const compiled = compiledRef.current;
-      const focusRoot = filterRef.current?.focusId ?? selectedRef.current;
-      if (compiled.active && focusRoot) {
+      if (compiled.active && filterRef.current?.focusId) {
         fg.zoomToFit(700, 60, (n: NodeObject) => compiled.nodeActive(n as AtlasNode));
       }
     };

@@ -16,7 +16,8 @@ export interface GraphFilter {
   layers?: Partial<Record<LayerKind, boolean>>;
   /** if non-empty, only these clusters stay active. */
   clusters?: number[];
-  /** root of an n-hop focus; defaults to the component's `selectedId`. */
+  /** root of an n-hop focus. Focus is only applied when this is set (pass
+   *  `selectedId` here to focus the current selection). */
   focusId?: string;
   /** hops from `focusId` to keep (default 1). */
   focusDepth?: number;
@@ -64,15 +65,10 @@ export interface CompiledFilter {
 
 const ALWAYS: CompiledFilter = { active: false, nodeActive: () => true, linkActive: () => true };
 
-export function compileFilter(
-  graph: LayeredGraph,
-  filter: GraphFilter | undefined,
-  selectedId: string | undefined,
-): CompiledFilter {
+export function compileFilter(graph: LayeredGraph, filter: GraphFilter | undefined): CompiledFilter {
   if (!filter) return ALWAYS;
 
-  const { tiers, minConfidence, layers, clusters, focusDepth } = filter;
-  const focusId = filter.focusId ?? selectedId;
+  const { tiers, minConfidence, layers, clusters, focusId, focusDepth } = filter;
 
   const clusterSet = clusters && clusters.length > 0 ? new Set(clusters) : null;
   const focusSet = focusId ? computeFocusSet(graph, focusId, focusDepth ?? 1) : null;

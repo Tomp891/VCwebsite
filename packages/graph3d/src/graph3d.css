@@ -82,7 +82,7 @@
 
 .atlas-graph3d__controls {
   position: absolute;
-  left: 28px;
+  right: 28px;
   top: 28px;
   display: flex;
   flex-direction: column;
