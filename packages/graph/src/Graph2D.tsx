@@ -286,6 +286,18 @@ export function Graph2D(props: Graph2DProps): JSX.Element {
     [],
   );
 
+  // Marginalia tooltip: what an edge is and how much to trust it.
+  const linkLabel = useCallback((link: GLink): string => {
+    const tierWord =
+      link.tier === "explicit"
+        ? "explicit \u00b7 ink"
+        : link.tier === "inferred_accepted"
+          ? "accepted \u00b7 ink"
+          : "inferred \u00b7 pencil";
+    const pct = Math.round(Math.min(1, Math.max(0, link.confidence)) * 100);
+    return `${link.type} \u2014 ${tierWord} \u00b7 ${pct}%`;
+  }, []);
+
   const fgRef = useRef<ForceGraphMethods<GNode, GLink> | undefined>(undefined);
 
   // Fit the graph once it has laid out.
@@ -293,6 +305,24 @@ export function Graph2D(props: Graph2DProps): JSX.Element {
     const t = setTimeout(() => fgRef.current?.zoomToFit(400, 40), 400);
     return () => clearTimeout(t);
   }, [graphData, size.width, size.height]);
+
+  // Reframe when the selection changes: frame the focused neighborhood, or
+  // fit the whole atlas back when focus clears.
+  useEffect(() => {
+    const fg = fgRef.current;
+    if (!fg) return;
+    const t = setTimeout(() => {
+      if (selectedId) {
+        fg.zoomToFit(500, 80, (n: GNode) => {
+          const id = n.id == null ? undefined : String(n.id);
+          return id != null && neighborIds.has(id);
+        });
+      } else {
+        fg.zoomToFit(500, 40);
+      }
+    }, 60);
+    return () => clearTimeout(t);
+  }, [selectedId, neighborIds]);
 
   return (
     <div className="atlas-graph2d" ref={containerRef}>
@@ -312,6 +342,7 @@ export function Graph2D(props: Graph2DProps): JSX.Element {
           linkColor={linkColor}
           linkWidth={linkWidth}
           linkLineDash={linkDash}
+          linkLabel={linkLabel}
           onNodeClick={(node) => {
             const id = node.id;
             if (id != null && onSelect) onSelect(String(id));
