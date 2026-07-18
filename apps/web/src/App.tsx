@@ -77,6 +77,57 @@ export function App() {
     ].join("\n");
   }, []);
 
+  // Deterministic answers for structural/meta questions ("how many notes?",
+  // "which tags?"). Counting is not something a small LLM does reliably, so we
+  // answer these straight from the store and skip the model entirely.
+  const answerMeta = useCallback((query: string): string | null => {
+    const q = query.toLowerCase();
+    const dutch = /\b(hoeveel|aantal|welke|notities|blokken|pagina|verbinding)/.test(q);
+    const bs = store.listBlocks();
+    const es = store.listEdges();
+    const pages = bs.filter((b) => b.parentId === null).length;
+    const tags = allTags(bs);
+
+    const asksCount = /\b(how many|how much|number of|count|total|hoeveel|aantal|totaal)\b/.test(q);
+    const mentions = (re: RegExp) => re.test(q);
+
+    // "which/what tags exist" or "list tags"
+    if (
+      mentions(/tags?\b/) &&
+      (mentions(/\b(which|what|list|welke|toon|noem)\b/) || (asksCount && mentions(/tags?/)))
+    ) {
+      if (asksCount && !mentions(/\b(which|what|welke|list|toon|noem)\b/)) {
+        return dutch
+          ? `Je database bevat ${tags.length} tags.`
+          : `Your database has ${tags.length} tags.`;
+      }
+      const list = tags.map((t) => `#${t}`).join(", ") || (dutch ? "geen" : "none");
+      return dutch
+        ? `Er zijn ${tags.length} tags: ${list}.`
+        : `There are ${tags.length} tags: ${list}.`;
+    }
+
+    if (asksCount && mentions(/\b(links?|edges?|verbinding|connectie|relatie)/)) {
+      return dutch
+        ? `Er zijn ${es.length} links (verbindingen) in je database.`
+        : `Your database has ${es.length} links (edges).`;
+    }
+
+    if (asksCount && mentions(/\b(notes?|notities|blokken|blocks|pagina|pages?)\b/)) {
+      const pageWord = mentions(/\b(pagina|pages?)\b/) && !mentions(/\b(notes?|notities|blokken|blocks)\b/);
+      if (pageWord) {
+        return dutch
+          ? `Je database bevat ${pages} pagina's.`
+          : `Your database has ${pages} pages.`;
+      }
+      return dutch
+        ? `Je database bevat ${bs.length} notes/blokken (waarvan ${pages} top-level pagina's).`
+        : `Your database has ${bs.length} notes/blocks (${pages} of them top-level pages).`;
+    }
+
+    return null;
+  }, []);
+
   const toggleTag = useCallback((tag: string) => {
     setActiveTags((cur) =>
       cur.includes(tag) ? cur.filter((t) => t !== tag) : [...cur, tag],
@@ -339,6 +390,7 @@ export function App() {
           onPath={setPath}
           onSelect={setSelectedId}
           getOverview={getChatOverview}
+          metaAnswer={answerMeta}
         />
       </aside>
     </div>

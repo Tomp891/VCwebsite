@@ -19,6 +19,10 @@ export interface ChatPanelProps {
   /** Optional provider of a fresh knowledge-base overview (counts, tags) that is
    *  added to each prompt so the model can answer meta questions. */
   getOverview?: () => string;
+  /** Optional deterministic answer for structural/meta questions (counts, tag
+   *  lists). When it returns a string the model is skipped, guaranteeing correct
+   *  numbers. Return null to fall through to the normal GraphRAG path. */
+  metaAnswer?: (query: string) => string | null;
 }
 
 /** A cited source, captured at answer time so history survives edits. */
@@ -82,6 +86,7 @@ export function ChatPanel({
   onPath,
   onSelect,
   getOverview,
+  metaAnswer,
 }: ChatPanelProps): JSX.Element {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -99,6 +104,21 @@ export function ChatPanel({
       setBusy(true);
       setError(null);
       try {
+        const meta = metaAnswer?.(trimmed) ?? null;
+        if (meta !== null) {
+          const turn: ChatTurn = {
+            id: newId(),
+            question: trimmed,
+            answer: meta,
+            sources: [],
+            path: [],
+            at: Date.now(),
+          };
+          setHistory((cur) => [turn, ...cur].slice(0, MAX_TURNS));
+          setQuery("");
+          onPath?.([]);
+          return;
+        }
         const ctx = await retriever.retrieve(trimmed);
         const ans = await answer(trimmed, ctx, provider, getOverview?.());
         const byId = new Map(ctx.blocks.map((b) => [b.id, b]));
@@ -123,7 +143,7 @@ export function ChatPanel({
         setBusy(false);
       }
     },
-    [retriever, provider, busy, onPath, getOverview],
+    [retriever, provider, busy, onPath, getOverview, metaAnswer],
   );
 
   const clearHistory = useCallback(() => setHistory([]), []);
