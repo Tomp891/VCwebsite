@@ -60,30 +60,43 @@ export async function computeEmergentGraphData(
 ): Promise<EmergentGraphData> {
   const emitTimeline = options.timeline ?? true;
 
-  await deps.index.sync(blocks);
-  const clustering = deps.clusterer.cluster(blocks, deps.index);
-  const ranks = deps.ranker.rank(blocks);
+  // Deduplicate by id (keep the last occurrence) so repeated blocks can't skew
+  // ranks/clusters or produce duplicate node attrs. Empty input short-circuits.
+  const uniqueBlocks = dedupeById(blocks);
+  if (uniqueBlocks.length === 0) {
+    return { themes: [], hulls: [], nodeAttrs: {}, ...(emitTimeline ? { timeline: [] } : {}) };
+  }
+
+  // Orchestration order: sync -> cluster -> rank -> name -> layout -> hulls -> timeline.
+  await deps.index.sync(uniqueBlocks);
+  const clustering = deps.clusterer.cluster(uniqueBlocks, deps.index);
+  const ranks = deps.ranker.rank(uniqueBlocks);
   const rankById = new Map<BlockId, number>(ranks.map((r) => [r.blockId, r.score]));
 
   const themes: Theme[] = [];
   for (const cluster of clustering.clusters) {
-    themes.push(await deps.themeNamer.name(cluster, blocks, deps.index));
+    themes.push(await deps.themeNamer.name(cluster, uniqueBlocks, deps.index));
   }
 
+  // Collect soft memberships, strongest first, per block.
   const membershipsByBlock = new Map<BlockId, Array<{ clusterId: number; weight: number }>>();
   for (const m of clustering.memberships ?? []) {
     const arr = membershipsByBlock.get(m.blockId) ?? [];
     arr.push({ clusterId: m.clusterId, weight: m.weight });
     membershipsByBlock.set(m.blockId, arr);
   }
+  for (const arr of membershipsByBlock.values()) {
+    arr.sort((a, b) => (b.weight !== a.weight ? b.weight - a.weight : a.clusterId - b.clusterId));
+  }
 
   const nodeAttrs: Record<BlockId, EmergentNodeAttrs> = {};
-  for (const b of blocks) {
+  for (const b of uniqueBlocks) {
     const memberships = membershipsByBlock.get(b.id);
     nodeAttrs[b.id] = {
       id: b.id,
       rank: rankById.get(b.id) ?? 0,
       clusterId: clustering.assignment[b.id] ?? 0,
+      // only expose `memberships` for genuinely multi-theme nodes.
       ...(memberships && memberships.length > 1 ? { memberships } : {}),
     };
   }
@@ -93,8 +106,18 @@ export async function computeEmergentGraphData(
   const hulls = buildThemeHulls(preliminary, positions, { padding: options.hullPadding });
 
   const timeline = emitTimeline
-    ? buildTimeline(blocks, clustering.assignment).map((f) => ({ t: f.t, assignment: f.assignment }))
+    ? buildTimeline(uniqueBlocks, clustering.assignment).map((f) => ({
+        t: f.t,
+        assignment: f.assignment,
+      }))
     : undefined;
 
   return { themes, hulls, nodeAttrs, ...(timeline ? { timeline } : {}) };
+}
+
+/** Deduplicate blocks by id, preserving the last occurrence of each. */
+function dedupeById(blocks: Block[]): Block[] {
+  const byId = new Map<BlockId, Block>();
+  for (const b of blocks) byId.set(b.id, b);
+  return [...byId.values()];
 }
