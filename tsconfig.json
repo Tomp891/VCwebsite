@@ -10,6 +10,7 @@
     { "path": "packages/clustering" },
     { "path": "packages/db" },
     { "path": "packages/rag" },
+    { "path": "packages/ranking" },
     { "path": "apps/web" }
   ]
 }

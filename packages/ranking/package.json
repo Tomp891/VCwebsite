@@ -1,0 +1,16 @@
+{
+  "name": "@atlas/ranking",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@atlas/contracts": "*"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.5"
+  }
+}
