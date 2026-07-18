@@ -11,7 +11,8 @@
     "dev": "npm run dev --workspace apps/web",
     "build": "npm run build --workspace packages/contracts && npm run build --workspace apps/web",
     "typecheck": "tsc -b",
-    "lint": "eslint . --ext .ts,.tsx"
+    "lint": "eslint . --ext .ts,.tsx",
+    "test": "vitest run --exclude '**/packages/embeddings/**' --exclude '**/node_modules/**' && npm run --workspace @atlas/embeddings test"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.0.0",
