@@ -1,0 +1,115 @@
+/* Atlas GraphRAG chat — parchment surface, ink prose, pencil marginalia.
+   Tokens mirrored from apps/web/src/theme.css (do not edit that file). */
+.rag-panel {
+  --rag-parchment: #f4ecd8;
+  --rag-parchment-2: #ece0c4;
+  --rag-ink: #1e2a3a;
+  --rag-ink-soft: #48566b;
+  --rag-pencil: #8a7f6b;
+  --rag-oxblood: #7b2d26;
+  --rag-verdigris: #3c6e5b;
+  --rag-line: #d8cbab;
+  --rag-serif: Spectral, Georgia, "Times New Roman", serif;
+  --rag-sans: Inter, system-ui, -apple-system, sans-serif;
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: var(--rag-ink);
+  font-family: var(--rag-sans);
+  font-size: 14px;
+}
+
+.rag-form {
+  display: flex;
+  gap: 8px;
+}
+
+.rag-input {
+  flex: 1;
+  padding: 8px 10px;
+  background: var(--rag-parchment);
+  border: 1px solid var(--rag-line);
+  border-radius: 6px;
+  color: var(--rag-ink);
+  font-family: var(--rag-serif);
+  font-size: 14px;
+}
+.rag-input:focus {
+  outline: none;
+  border-color: var(--rag-verdigris);
+}
+
+.rag-submit {
+  padding: 8px 14px;
+  background: var(--rag-ink);
+  color: var(--rag-parchment);
+  border: 1px solid var(--rag-ink);
+  border-radius: 6px;
+  font-family: var(--rag-serif);
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.rag-submit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.rag-status {
+  font-family: var(--rag-serif);
+  font-style: italic;
+  color: var(--rag-pencil);
+}
+.rag-error {
+  color: var(--rag-oxblood);
+}
+
+.rag-answer {
+  background: var(--rag-parchment-2);
+  border: 1px solid var(--rag-line);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+.rag-answer-text {
+  font-family: var(--rag-serif);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.rag-sources-title {
+  font-family: var(--rag-serif);
+  font-variant: small-caps;
+  letter-spacing: 0.06em;
+  color: var(--rag-ink-soft);
+  font-size: 12px;
+  margin: 14px 0 6px;
+  border-top: 1px dashed var(--rag-pencil);
+  padding-top: 8px;
+}
+
+.rag-sources {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.rag-source {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.rag-source-id {
+  font-family: var(--rag-serif);
+  color: var(--rag-oxblood);
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+.rag-source-snippet {
+  color: var(--rag-ink-soft);
+  font-family: var(--rag-serif);
+  line-height: 1.4;
+}
