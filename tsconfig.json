@@ -12,6 +12,7 @@
     { "path": "packages/rag" },
     { "path": "packages/ranking" },
     { "path": "packages/autotag" },
+    { "path": "packages/themes" },
     { "path": "apps/web" }
   ]
 }
