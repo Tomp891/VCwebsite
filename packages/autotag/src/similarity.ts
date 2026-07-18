@@ -128,9 +128,12 @@ export function recallExistingTags(
     }
   }
 
+  // Normalise by the neighbours actually found (not the requested k) so recall
+  // isn't unfairly penalised when a block has fewer than k close neighbours.
+  const denom = Math.max(1, neighbours.length);
   const out: TagRecall[] = [];
   for (const [tag, { score, count }] of agg) {
-    const norm = clampScore(score / limit);
+    const norm = clampScore(score / denom);
     if (norm <= 0) continue;
     out.push({
       tag,
