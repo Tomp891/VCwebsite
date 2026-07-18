@@ -16,10 +16,39 @@ export interface PinOptions {
   priorityProp?: string;
 }
 
-export function pinWeights(blocks: Block[], _opts: PinOptions = {}): SignalScores {
-  void _opts;
-  // STUB: nothing pinned. Child replaces with props-based pin/priority parsing.
+/** Coerce a prop value to a finite number, or undefined if not numeric. */
+function toFiniteNumber(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") return undefined;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+}
+
+export function pinWeights(blocks: Block[], opts: PinOptions = {}): SignalScores {
+  const prop = opts.prop ?? "pinned";
+  const priorityProp = opts.priorityProp ?? "priority";
+
   const scores: SignalScores = new Map();
-  for (const b of blocks) scores.set(b.id, 0);
+  for (const b of blocks) {
+    let weight = 0;
+
+    const pin = b.props[prop];
+    if (pin === true) {
+      weight = 1;
+    } else {
+      const numericPin = toFiniteNumber(pin);
+      if (numericPin !== undefined) weight = numericPin;
+    }
+
+    const priority = toFiniteNumber(b.props[priorityProp]);
+    if (priority !== undefined) weight += priority;
+
+    if (weight < 0) weight = 0;
+    scores.set(b.id, weight);
+  }
   return scores;
 }
