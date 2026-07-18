@@ -17,6 +17,7 @@ import { storeToGraphData } from "./graphData.js";
 import { downloadExport, importFromJson } from "./persistence.js";
 import { LinksPanel } from "./LinksPanel.js";
 import { GraphPreview } from "./GraphPreview.js";
+import { EmergentPanel } from "./emergent/EmergentPanel.js";
 
 // 3D pulls in three.js + 3d-force-graph (~large). Load it only when the Atlas
 // mode is opened so the initial bundle stays small.
@@ -37,7 +38,7 @@ const CLUSTER_LABELS: Record<number, string> = {
 };
 
 type CenterTab = "page" | "database";
-type GraphMode = "2d" | "3d";
+type GraphMode = "2d" | "3d" | "emergent";
 
 export function App() {
   // Re-render on any store change so graph/nav/db stay in sync. We keep a
@@ -81,9 +82,10 @@ export function App() {
     return () => document.removeEventListener("keydown", onKey);
   }, [isFullscreen]);
 
+  const blocks = useMemo(() => store.listBlocks(), [version]);
   const graphData = useMemo(
-    () => storeToGraphData(store.listBlocks(), store.listEdges()),
-    [version],
+    () => storeToGraphData(blocks, store.listEdges()),
+    [blocks],
   );
 
   // Every tag in the store + a lookup of tags per block, for filtering.
@@ -212,6 +214,13 @@ export function App() {
               3D Atlas
             </button>
             <button
+              className={graphMode === "emergent" ? "seg-btn active" : "seg-btn"}
+              onClick={() => setGraphMode("emergent")}
+              title="Emergent themes — hulls, ranking and temporal playback"
+            >
+              Emergent
+            </button>
+            <button
               className="seg-btn"
               onClick={toggleFullscreen}
               title={isFullscreen ? "Exit fullscreen" : "View graph fullscreen"}
@@ -222,7 +231,7 @@ export function App() {
           </div>
         </div>
         <div className={isFullscreen ? "graph-frame is-fullscreen" : "graph-frame"}>
-          {allTagList.length > 0 && (
+          {graphMode !== "emergent" && allTagList.length > 0 && (
             <div className="graph-filter" role="group" aria-label="Filter graph by tag">
               {allTagList.map((t) => (
                 <button
@@ -247,17 +256,26 @@ export function App() {
               )}
             </div>
           )}
-          {graphMode === "2d" ? (
+          {graphMode === "2d" && (
             <Graph2D
               data={filteredGraphData}
               selectedId={selectedId}
               onSelect={setSelectedId}
               clusterLabels={CLUSTER_LABELS}
             />
-          ) : (
+          )}
+          {graphMode === "3d" && (
             <Suspense fallback={<div className="graph-loading">Unfolding the atlas…</div>}>
               <Graph3D data={filteredGraphData} selectedId={selectedId} onSelect={setSelectedId} />
             </Suspense>
+          )}
+          {graphMode === "emergent" && (
+            <EmergentPanel
+              blocks={blocks}
+              version={version}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
           )}
           {selectedPageId && (
             <GraphPreview
