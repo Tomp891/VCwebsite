@@ -63,10 +63,18 @@ function cosine(a: number[], b: number[]): number {
     mb += b[i] * b[i];
   }
   if (ma === 0 || mb === 0) return 0;
-  return dot / (Math.sqrt(ma) * Math.sqrt(mb));
+  const c = dot / (Math.sqrt(ma) * Math.sqrt(mb));
+  // clamp away floating-point drift so scores stay in the documented [-1, 1].
+  return c < -1 ? -1 : c > 1 ? 1 : c;
 }
 
-/** Deterministic in-memory EmbeddingIndex over the supplied blocks. */
+/**
+ * Deterministic in-memory {@link EmbeddingIndex} over the supplied blocks.
+ *
+ * Vectors are bag-of-words counts over a shared vocabulary, so the same blocks
+ * always produce byte-identical records (no network, no randomness). The last
+ * write for a given block id wins, matching the incremental `sync` contract.
+ */
 export class MockEmbeddingIndex implements EmbeddingIndex {
   private records = new Map<BlockId, EmbeddingRecord>();
 
@@ -98,12 +106,13 @@ export class MockEmbeddingIndex implements EmbeddingIndex {
   }
 
   all(): EmbeddingRecord[] {
-    return [...this.records.values()];
+    // stable, id-sorted order so callers get a reproducible listing.
+    return [...this.records.values()].sort((a, b) => a.blockId.localeCompare(b.blockId));
   }
 
   nearest(id: BlockId, k: number): Array<{ id: BlockId; score: number }> {
     const self = this.records.get(id);
-    if (!self) return [];
+    if (!self || k <= 0) return [];
     const scored: Array<{ id: BlockId; score: number }> = [];
     for (const rec of this.records.values()) {
       if (rec.blockId === id) continue;
