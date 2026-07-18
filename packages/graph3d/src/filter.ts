@@ -1,7 +1,7 @@
 import type { AtlasNode, AtlasLink, LayerKind, LinkStyle, LayeredGraph } from "./synthesize.js";
 
 /** How filtered-out elements are treated. */
-export type FilterMode = "dim" | "hide";
+export type FilterMode = "dim" | "hide" | "prune";
 
 /**
  * Declarative filter over the layered graph. Every axis maps directly to the
@@ -21,7 +21,8 @@ export interface GraphFilter {
   focusId?: string;
   /** hops from `focusId` to keep (default 1). */
   focusDepth?: number;
-  /** dim (fade to pencil, keep context) vs hide (visibility off). default "dim". */
+  /** dim (fade to pencil, keep context), hide (visibility off, layout preserved),
+   *  or prune (rebuild graphData from the active set — for large graphs). default "dim". */
   mode?: FilterMode;
 }
 
