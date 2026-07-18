@@ -188,6 +188,68 @@
   padding: 12px;
 }
 
+/* nav tag backlink badge */
+.atlas-nav__count--links {
+  margin-left: auto;
+  color: var(--verdigris, #2b5f5a);
+  font-weight: 600;
+}
+.atlas-nav__count--links + .atlas-nav__count { margin-left: 6px; }
+
+/* database tag facet */
+.atlas-dbview__facet {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 8px;
+}
+.atlas-dbview__facet-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+.atlas-dbview__facet-label {
+  font-family: var(--serif);
+  font-variant: small-caps;
+  letter-spacing: 0.05em;
+  color: var(--oxblood);
+  font-size: 11px;
+  margin-right: 8px;
+}
+.atlas-dbview__facet-tag {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.atlas-dbview__facet-tag:hover { background: rgba(43, 95, 90, 0.12); }
+.atlas-dbview__facet-links {
+  color: var(--verdigris, #2b5f5a);
+  font-weight: 600;
+}
+.atlas-dbview__facet-count {
+  color: var(--pencil);
+}
+.atlas-chip--active {
+  cursor: pointer;
+  background: rgba(43, 95, 90, 0.16);
+  color: var(--ink);
+  border-color: var(--verdigris, #2b5f5a);
+}
+.atlas-dbview__clear {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--oxblood);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  margin-left: 6px;
+  text-decoration: underline;
+}
+
 /* board / kanban */
 .atlas-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 4px; }
 .atlas-board__col {
