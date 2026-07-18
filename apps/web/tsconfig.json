@@ -12,6 +12,7 @@
     { "path": "../../packages/graph3d" },
     { "path": "../../packages/ai" },
     { "path": "../../packages/db" },
-    { "path": "../../packages/rag" }
+    { "path": "../../packages/rag" },
+    { "path": "../../packages/emergent-graph" }
   ]
 }
