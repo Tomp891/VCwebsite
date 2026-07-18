@@ -44,15 +44,29 @@ function bowVectors(blocks: Block[]): Map<BlockId, number[]> {
   return out;
 }
 
+/** Replace non-finite components with 0 so distances stay well-defined. */
+function sanitize(vector: number[]): number[] {
+  let clean = true;
+  for (let i = 0; i < vector.length; i++) {
+    if (!Number.isFinite(vector[i])) {
+      clean = false;
+      break;
+    }
+  }
+  return clean ? vector : vector.map((x) => (Number.isFinite(x) ? x : 0));
+}
+
 function vectorsFor(blocks: Block[], index?: EmbeddingIndex): Map<BlockId, number[]> {
   if (!index) return bowVectors(blocks);
   const records = blocks.map((b) => index.get(b.id));
-  const dim = records.find((r) => r)?.vector.length ?? 0;
+  const dim = records.find((r) => r && r.vector.length > 0)?.vector.length ?? 0;
   if (dim === 0) return bowVectors(blocks);
   const out = new Map<BlockId, number[]>();
   blocks.forEach((b, i) => {
     const rec = records[i];
-    out.set(b.id, rec ? rec.vector.slice() : new Array<number>(dim).fill(0));
+    const raw =
+      rec && rec.vector.length === dim ? rec.vector.slice() : new Array<number>(dim).fill(0);
+    out.set(b.id, sanitize(raw));
   });
   return out;
 }
@@ -144,9 +158,24 @@ function defaultK(n: number): number {
   return Math.max(2, Math.round(Math.sqrt(n / 2)));
 }
 
-/** Deterministic k-means++-style seeding: farthest-first from a fixed start. */
-function seedCentroids(order: BlockId[], vecs: Map<BlockId, number[]>, k: number): number[][] {
-  const chosen: number[] = [0];
+/** Coerce a possibly-undefined/fractional/negative option to a bounded integer. */
+function intOption(value: number | undefined, fallback: number, min: number): number {
+  if (value === undefined || !Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.floor(value));
+}
+
+/**
+ * Deterministic k-means++-style seeding: farthest-first from a fixed start.
+ * `start` (derived from the optional seed) chooses the first centroid so callers
+ * can request a different — but still fully reproducible — initialisation.
+ */
+function seedCentroids(
+  order: BlockId[],
+  vecs: Map<BlockId, number[]>,
+  k: number,
+  start = 0,
+): number[][] {
+  const chosen: number[] = [start];
   while (chosen.length < k) {
     let bestIdx = -1;
     let bestDist = -Infinity;
@@ -179,9 +208,10 @@ export function kmeans(
   const assignment: Record<BlockId, number> = {};
   if (n === 0) return { method: "kmeans", clusters: [], assignment, quality: 0 };
 
-  const k = Math.min(n, Math.max(1, options.k ?? defaultK(n)));
-  const maxIter = options.maxIterations ?? 50;
-  let centroids = seedCentroids(order, vecs, k);
+  const k = Math.min(n, intOption(options.k, defaultK(n), 1));
+  const maxIter = intOption(options.maxIterations, 50, 0);
+  const start = ((intOption(options.seed, 0, 0) % n) + n) % n;
+  let centroids = seedCentroids(order, vecs, k, start);
   const labels = new Array<number>(n).fill(0);
 
   for (let iter = 0; iter < maxIter; iter++) {
@@ -237,7 +267,7 @@ export function hdbscan(
   const assignment: Record<BlockId, number> = {};
   if (n === 0) return { method: "hdbscan", clusters: [], assignment, quality: 0 };
 
-  const minPts = Math.max(2, options.minClusterSize ?? 2);
+  const minPts = intOption(options.minClusterSize, 2, 2);
   const sims: number[][] = Array.from({ length: n }, () => new Array<number>(n).fill(0));
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
