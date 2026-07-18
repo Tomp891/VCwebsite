@@ -185,7 +185,8 @@ test("contentHash: deterministic 8-char hex, distinguishes content", () => {
 
 test("blockText: trims content, appends sorted string tags", () => {
   const b = makeBlock("t1", "  spaced content  ", ["zeta", "alpha", "mid"]);
-  assert.equal(blockText(b), "spaced content alpha mid zeta");
+  // content and tags are joined with a newline so they can't bleed together.
+  assert.equal(blockText(b), "spaced content\nalpha mid zeta");
 });
 
 test("blockText: no tags returns bare content; changing tags changes hash", () => {
@@ -205,7 +206,7 @@ test("blockText: ignores non-string tag values and missing props", () => {
     // but blockText must defensively ignore anything non-string.
     props: { tags: ["keep"] as string[] },
   };
-  assert.equal(blockText(withMixed), "content keep");
+  assert.equal(blockText(withMixed), "content\nkeep");
 
   const noProps = makeBlock("t4", "content only");
   assert.equal(blockText(noProps), "content only");
