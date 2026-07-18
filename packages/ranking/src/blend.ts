@@ -11,16 +11,33 @@ import type { BlockId, RankScore, RankSignal } from "@atlas/contracts";
 import type { SignalScores, SignalWeights } from "./types.js";
 import { DEFAULT_WEIGHTS } from "./types.js";
 
-/** Min-max normalize raw scores into 0..1 (flat input -> all zeros). */
+/**
+ * Min-max normalize raw scores into 0..1.
+ *   - empty input -> empty map
+ *   - flat input (all equal) -> all zeros
+ *   - non-finite inputs (NaN/±Infinity) are ignored for the range and mapped to
+ *     0 so the blend never emits NaN.
+ *
+ * Uses an explicit reduction (not `Math.min(...values)`) so arbitrarily large
+ * inputs cannot overflow the call stack.
+ */
 export function normalize01(scores: SignalScores): SignalScores {
   const out: SignalScores = new Map();
-  const values = [...scores.values()];
-  if (values.length === 0) return out;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  if (scores.size === 0) return out;
+
+  let min = Infinity;
+  let max = -Infinity;
+  for (const v of scores.values()) {
+    if (!Number.isFinite(v)) continue;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+
+  // No finite values at all -> collapse everything to 0.
   const span = max - min;
+  const hasRange = Number.isFinite(min) && Number.isFinite(max) && span > 0;
   for (const [id, v] of scores) {
-    out.set(id, span > 0 ? (v - min) / span : 0);
+    out.set(id, hasRange && Number.isFinite(v) ? (v - min) / span : 0);
   }
   return out;
 }
@@ -62,7 +79,8 @@ export function blend(
     let total = 0;
     const breakdown: Partial<Record<RankSignal, number>> = {};
     for (const sig of Object.keys(normalized) as RankSignal[]) {
-      const weight = w[sig] ?? 0;
+      const rawWeight = w[sig] ?? 0;
+      const weight = Number.isFinite(rawWeight) ? rawWeight : 0;
       if (weight === 0) continue;
       const contribution = (normalized[sig]!.get(id) ?? 0) * weight;
       breakdown[sig] = contribution;
