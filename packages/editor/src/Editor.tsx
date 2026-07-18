@@ -137,17 +137,20 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, au
       }
       // Insert a newline within the bullet ourselves and place the caret after
       // it, so the next keystroke (and a possible double-Enter) is reliable.
+      // Mutate the DOM synchronously (value, caret, height) so the new line is
+      // visible immediately; React's async re-render then commits the same
+      // value, which leaves the DOM (and caret) untouched.
       const next = `${value.slice(0, caret)}\n${value.slice(caret)}`;
       const pos = caret + 1;
-      onChange(next);
+      el.value = next;
+      el.setSelectionRange(pos, pos);
+      autoGrow();
+      // Keep the just-added line on screen instead of forcing the user to
+      // scroll to find where the Enter went.
+      el.scrollIntoView({ block: "nearest" });
       pending.current = { value: next, caret: pos };
+      onChange(next);
       requestAnimationFrame(() => {
-        el.focus();
-        el.setSelectionRange(pos, pos);
-        autoGrow();
-        // Keep the just-added line on screen instead of forcing the user to
-        // scroll to find where the Enter went.
-        el.scrollIntoView({ block: "nearest" });
         pending.current = null;
       });
       return;
