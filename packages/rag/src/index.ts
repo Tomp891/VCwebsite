@@ -6,7 +6,8 @@
  * -> a grounded ChatAnswer with inline block-id citations; ChatPanel wires both
  * into a UI; Demo runs it all against the contract mock fixtures.
  */
-export { createRetriever, DEFAULT_TOP_K } from "./retriever.js";
+export { createRetriever, DEFAULT_TOP_K, DEFAULT_HOPS } from "./retriever.js";
+export type { RetrieverOptions } from "./retriever.js";
 export { answer, buildPrompt, extractCitations } from "./answer.js";
 export { cosine } from "./cosine.js";
 export { ChatPanel } from "./ChatPanel.js";
