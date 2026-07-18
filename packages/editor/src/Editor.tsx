@@ -33,14 +33,24 @@ interface BlockRowProps {
   onChange: (content: string) => void;
   /** Fired on blur with the final content (used to harvest #hashtags). */
   onCommit?: (content: string) => void;
-  onEnter: () => void;
+  /** Split at the caret: text before stays, text after seeds a new block. */
+  onEnter: (before: string, after: string) => void;
   onDelete: () => void;
+  /** Focus this row's textarea (caret at start) once, after it mounts. */
+  autoFocus?: boolean;
 }
 
-function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete }: BlockRowProps): JSX.Element {
+function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, autoFocus }: BlockRowProps): JSX.Element {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [suggest, setSuggest] = useState<WikilinkMatch | null>(null);
   const [active, setActive] = useState(0);
+
+  useEffect(() => {
+    if (autoFocus && ref.current) {
+      ref.current.focus();
+      ref.current.setSelectionRange(0, 0);
+    }
+  }, [autoFocus]);
 
   const matches = useMemo(() => {
     if (!suggest) return [];
@@ -92,7 +102,9 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete }: 
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      onEnter();
+      const el = e.currentTarget;
+      const caret = el.selectionStart ?? el.value.length;
+      onEnter(el.value.slice(0, caret), el.value.slice(caret));
       return;
     }
     if (e.key === "Backspace" && block.content === "") {
@@ -212,6 +224,9 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
     [blocks],
   );
   const [selectedId, setSelectedId] = useState<BlockId | null>(null);
+  // Id of the block that should grab focus after the next render (e.g. the one
+  // just created by pressing Enter).
+  const [focusId, setFocusId] = useState<BlockId | null>(null);
 
   // Prefer the controlled `pageId` when it names a real page, else the last
   // internal selection, else the first page.
@@ -273,7 +288,37 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
 
   function newChild(): void {
     if (!currentId) return;
-    store.createBlock({ parentId: currentId, order: children.length, type: "text", content: "", props: {} });
+    const created = store.createBlock({ parentId: currentId, order: children.length, type: "text", content: "", props: {} });
+    setFocusId(created.id);
+  }
+
+  // Enter inside a block: keep `before` in the current block, push `after` into
+  // a new block right below it, then focus the new block.
+  function splitBlock(afterId: BlockId, before: string, after: string): void {
+    if (!currentId) return;
+    const idx = children.findIndex((c) => c.id === afterId);
+    if (idx === -1) return;
+    store.upsertBlock({ id: afterId, content: before });
+    // Make room: bump the order of every sibling below the split point.
+    for (const sib of children.slice(idx + 1)) {
+      store.upsertBlock({ id: sib.id, order: sib.order + 1 });
+    }
+    const created = store.createBlock({
+      parentId: currentId,
+      order: children[idx].order + 1,
+      type: "text",
+      content: after,
+      props: {},
+    });
+    setFocusId(created.id);
+  }
+
+  // Backspace on an empty block: delete it and focus the previous sibling.
+  function removeChild(id: BlockId): void {
+    const idx = children.findIndex((c) => c.id === id);
+    store.deleteBlock(id);
+    const prev = idx > 0 ? children[idx - 1] : null;
+    if (prev) setFocusId(prev.id);
   }
 
   const pageTags = current ? blockTagList(current.props) : [];
@@ -348,10 +393,11 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
                   key={b.id}
                   block={b}
                   pageTitles={pageTitles}
+                  autoFocus={b.id === focusId}
                   onChange={(content) => store.upsertBlock({ id: b.id, content })}
                   onCommit={(content) => mergeHashtags(content)}
-                  onEnter={newChild}
-                  onDelete={() => store.deleteBlock(b.id)}
+                  onEnter={(before, after) => splitBlock(b.id, before, after)}
+                  onDelete={() => removeChild(b.id)}
                 />
               ))}
             </div>
