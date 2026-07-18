@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GraphData } from "@atlas/contracts";
 import ForceGraph3D from "3d-force-graph";
 import type { ForceGraph3DInstance, NodeObject, LinkObject } from "3d-force-graph";
@@ -8,6 +8,7 @@ import { toLayeredGraph } from "./synthesize.js";
 import type { AtlasNode, AtlasLink, LayeredGraph } from "./synthesize.js";
 import { compileFilter } from "./filter.js";
 import type { CompiledFilter, FilterMode, GraphFilter } from "./filter.js";
+import { FilterControls } from "./FilterControls.js";
 import "./graph3d.css";
 
 export interface Graph3DProps {
@@ -16,6 +17,10 @@ export interface Graph3DProps {
   onSelect?: (id: string) => void;
   /** optional declarative filter; when omitted the full graph is shown. */
   filter?: GraphFilter;
+  /** render the built-in parchment filter panel (self-manages filter state). */
+  showControls?: boolean;
+  /** notified whenever the effective filter changes (useful with `showControls`). */
+  onFilterChange?: (filter: GraphFilter) => void;
 }
 
 type Coords3 = { x: number; y: number; z: number };
@@ -134,20 +139,35 @@ function buildPencilLine(dimmed: boolean): THREE.Line {
   return line;
 }
 
-export function Graph3D({ data, selectedId, onSelect, filter }: Graph3DProps): JSX.Element {
+export function Graph3D({ data, selectedId, onSelect, filter, showControls, onFilterChange }: Graph3DProps): JSX.Element {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<ForceGraph3DInstance | null>(null);
   const selectedRef = useRef<string | undefined>(selectedId);
   const onSelectRef = useRef<Graph3DProps["onSelect"]>(onSelect);
   const layeredRef = useRef<LayeredGraph | null>(null);
-  const filterRef = useRef<GraphFilter | undefined>(filter);
   const compiledRef = useRef<CompiledFilter>({ active: false, nodeActive: () => true, linkActive: () => true });
   const applyRef = useRef<(() => void) | null>(null);
+  const prunedRef = useRef(false);
+
+  // when showControls is on, the panel self-manages filter state (seeded from `filter`).
+  const [panelFilter, setPanelFilter] = useState<GraphFilter>(() => filter ?? {});
+  const [focusSelected, setFocusSelected] = useState(false);
+
+  const clusters = useMemo(
+    () => Array.from(new Set(data.nodes.map((n) => n.cluster))).sort((a, b) => a - b),
+    [data],
+  );
+
+  const effectiveFilter: GraphFilter | undefined = showControls
+    ? { ...panelFilter, focusId: focusSelected ? selectedId : undefined }
+    : filter;
+
+  const filterRef = useRef<GraphFilter | undefined>(effectiveFilter);
 
   selectedRef.current = selectedId;
   onSelectRef.current = onSelect;
-  filterRef.current = filter;
+  filterRef.current = effectiveFilter;
 
   const recompute = () => {
     if (layeredRef.current) {
@@ -230,13 +250,30 @@ export function Graph3D({ data, selectedId, onSelect, filter }: Graph3DProps): J
     // change redraws without rebuilding graphData (keeps node positions stable), and
     // frames the focused subset when a focus root is set.
     applyRef.current = () => {
+      const layered = layeredRef.current;
+      if (!layered) return;
+      const compiled = compiledRef.current;
+
+      // "prune" mode rebuilds graphData from the active set (lighter sim for large
+      // graphs, at the cost of a relayout); dim/hide keep the full data for stable
+      // positions. Only touch graphData when entering/leaving/refreshing a prune.
+      const pruning = compiled.active && mode() === "prune";
+      if (pruning) {
+        const nodes = layered.nodes.filter((n) => compiled.nodeActive(n));
+        const links = layered.links.filter((l) => compiled.linkActive(l));
+        fg.graphData({ nodes: nodes as NodeObject[], links: links as LinkObject[] });
+        prunedRef.current = true;
+      } else if (prunedRef.current) {
+        fg.graphData({ nodes: layered.nodes as NodeObject[], links: layered.links as LinkObject[] });
+        prunedRef.current = false;
+      }
+
       fg.nodeThreeObject(nodeThree)
         .nodeVisibility(nodeVis)
         .linkThreeObject(linkThree)
         .linkVisibility(linkVis)
         .linkColor(linkCol)
         .linkWidth(linkW);
-      const compiled = compiledRef.current;
       if (compiled.active && filterRef.current?.focusId) {
         fg.zoomToFit(700, 60, (n: NodeObject) => compiled.nodeActive(n as AtlasNode));
       }
@@ -281,6 +318,7 @@ export function Graph3D({ data, selectedId, onSelect, filter }: Graph3DProps): J
     const layered = toLayeredGraph(data);
     layeredRef.current = layered;
     fg.graphData({ nodes: layered.nodes as NodeObject[], links: layered.links as LinkObject[] });
+    prunedRef.current = false;
     recompute();
     applyRef.current?.();
   }, [data]);
@@ -292,17 +330,32 @@ export function Graph3D({ data, selectedId, onSelect, filter }: Graph3DProps): J
     applyRef.current?.();
   }, [selectedId]);
 
-  // re-apply filtering without rebuilding graphData (stable layout).
+  // re-apply filtering without rebuilding graphData (stable layout) when it changes.
+  const filterKey = JSON.stringify(effectiveFilter ?? null);
   useEffect(() => {
-    if (!graphRef.current) return;
-    recompute();
-    applyRef.current?.();
-  }, [filter]);
+    if (graphRef.current) {
+      recompute();
+      applyRef.current?.();
+    }
+    onFilterChange?.(effectiveFilter ?? {});
+  }, [filterKey]);
+
+  const patchPanelFilter = (patch: Partial<GraphFilter>) => setPanelFilter((prev) => ({ ...prev, ...patch }));
 
   return (
     <div ref={containerRef} className="atlas-graph3d">
       <div ref={canvasRef} className="atlas-graph3d__canvas" />
       <div className="atlas-graph3d__caption">Living Atlas — atoms · concepts · domain</div>
+      {showControls && (
+        <FilterControls
+          value={panelFilter}
+          clusters={clusters}
+          focusSelected={focusSelected}
+          hasSelection={!!selectedId}
+          onChange={patchPanelFilter}
+          onFocusToggle={setFocusSelected}
+        />
+      )}
       <div className="atlas-graph3d__legend">
         <div className="atlas-graph3d__legend-row">
           <span className="atlas-graph3d__swatch atlas-graph3d__swatch--ink" /> explicit · ink

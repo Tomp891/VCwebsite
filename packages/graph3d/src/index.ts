@@ -5,3 +5,5 @@ export { toLayeredGraph } from "./synthesize.js";
 export type { AtlasNode, AtlasLink, LayeredGraph, LayerKind, NodeKind, LinkStyle } from "./synthesize.js";
 export { compileFilter, computeFocusSet } from "./filter.js";
 export type { GraphFilter, FilterMode, CompiledFilter } from "./filter.js";
+export { FilterControls } from "./FilterControls.js";
+export type { FilterControlsProps } from "./FilterControls.js";
