@@ -17,6 +17,7 @@ import { ChatPanel, createRetriever } from "@atlas/rag";
 import { storeToGraphData } from "./graphData.js";
 import { downloadExport, importFromJson } from "./persistence.js";
 import { LinksPanel } from "./LinksPanel.js";
+import { GraphPreview } from "./GraphPreview.js";
 
 // 3D pulls in three.js + 3d-force-graph (~large). Load it only when the Atlas
 // mode is opened so the initial bundle stays small.
@@ -57,6 +58,12 @@ export function App() {
   // (not the native Fullscreen API) because react-force-graph's canvas stops
   // painting when resized inside a native-fullscreen element.
   const toggleFullscreen = useCallback(() => setIsFullscreen((v) => !v), []);
+
+  // Click-through from a graph node preview to the full page in the editor.
+  const openSelectedPage = useCallback(() => {
+    setCenterTab("page");
+    setIsFullscreen(false);
+  }, []);
 
   // Esc leaves the expanded view.
   useEffect(() => {
@@ -185,6 +192,15 @@ export function App() {
             <Suspense fallback={<div className="graph-loading">Unfolding the atlas…</div>}>
               <Graph3D data={graphData} selectedId={selectedId} onSelect={setSelectedId} />
             </Suspense>
+          )}
+          {selectedPageId && (
+            <GraphPreview
+              store={store}
+              pageId={selectedPageId}
+              version={version}
+              onOpen={openSelectedPage}
+              onClose={() => setSelectedId(undefined)}
+            />
           )}
           {isFullscreen && (
             <button
