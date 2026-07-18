@@ -105,6 +105,85 @@ interface OllamaGenerateResponse {
   response: string;
 }
 
+export interface OllamaProbe {
+  /** the base URL that was probed. */
+  baseUrl: string;
+  /** whether the Ollama HTTP API answered. */
+  ok: boolean;
+  /** model names Ollama reports as installed (empty if unreachable). */
+  models: string[];
+  /** failure reason when `ok` is false. */
+  error?: string;
+}
+
+interface OllamaTagsResponse {
+  models?: { name: string }[];
+}
+
+/**
+ * Check whether a local Ollama server is reachable and list its installed
+ * models. Used to decide whether to run locally or fall back to the mock, and to
+ * surface status in the UI. Never throws — a down server resolves to `ok:false`.
+ */
+export async function probeOllama(
+  baseUrl = "http://localhost:11434",
+  timeoutMs = 1500,
+): Promise<OllamaProbe> {
+  const url = baseUrl.replace(/\/$/, "");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${url}/api/tags`, { signal: controller.signal });
+    if (!res.ok) {
+      return { baseUrl: url, ok: false, models: [], error: `HTTP ${res.status}` };
+    }
+    const data = (await res.json()) as OllamaTagsResponse;
+    const models = (data.models ?? []).map((m) => m.name);
+    return { baseUrl: url, ok: true, models };
+  } catch (err) {
+    const error =
+      err instanceof Error
+        ? err.name === "AbortError"
+          ? "timed out"
+          : err.message
+        : String(err);
+    return { baseUrl: url, ok: false, models: [], error };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * A provider that delegates to `primary` and, if a call throws (e.g. Ollama is
+ * not running), transparently falls back to `fallback`. `onFallback` is invoked
+ * once per failing call so the host can surface that the mock answered. This
+ * keeps the app usable offline while preferring the real local model.
+ */
+export function createFallbackProvider(
+  primary: AIProvider,
+  fallback: AIProvider,
+  onFallback?: (op: "embed" | "chat", error: unknown) => void,
+): AIProvider {
+  return {
+    async embed(texts: string[]): Promise<number[][]> {
+      try {
+        return await primary.embed(texts);
+      } catch (err) {
+        onFallback?.("embed", err);
+        return fallback.embed(texts);
+      }
+    },
+    async chat(prompt: string): Promise<string> {
+      try {
+        return await primary.chat(prompt);
+      } catch (err) {
+        onFallback?.("chat", err);
+        return fallback.chat(prompt);
+      }
+    },
+  };
+}
+
 export function createOllamaProvider(opts: OllamaOptions = {}): AIProvider {
   const baseUrl = (opts.baseUrl ?? "http://localhost:11434").replace(/\/$/, "");
   const embedModel = opts.embedModel ?? "nomic-embed-text";

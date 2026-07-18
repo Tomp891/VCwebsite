@@ -2,8 +2,13 @@
  * @atlas/ai — embeddings + suggestion engine + review UI (Agent D).
  */
 
-export { createMockProvider, createOllamaProvider } from "./provider.js";
-export type { OllamaOptions } from "./provider.js";
+export {
+  createMockProvider,
+  createOllamaProvider,
+  createFallbackProvider,
+  probeOllama,
+} from "./provider.js";
+export type { OllamaOptions, OllamaProbe } from "./provider.js";
 export { cosineSimilarity } from "./similarity.js";
 export {
   createSuggester,

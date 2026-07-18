@@ -10,7 +10,7 @@ import {
 import type { ChangeEvent } from "react";
 import { createLocalStore, Editor } from "@atlas/editor";
 import { Graph2D } from "@atlas/graph";
-import { createMockProvider, SuggestionsPanel } from "@atlas/ai";
+import { SuggestionsPanel } from "@atlas/ai";
 import { DatabaseView, NavTree, allTags, blockTags } from "@atlas/db";
 import { ChatPanel, createRetriever } from "@atlas/rag";
 import { storeToGraphData } from "./graphData.js";
@@ -18,6 +18,8 @@ import { downloadExport, importFromJson } from "./persistence.js";
 import { LinksPanel } from "./LinksPanel.js";
 import { GraphPreview } from "./GraphPreview.js";
 import { EmergentPanel } from "./emergent/EmergentPanel.js";
+import { AiSettings } from "./ai/AiSettings.js";
+import { useAiProvider } from "./ai/useAiProvider.js";
 
 // 3D pulls in three.js + 3d-force-graph (~large). Load it only when the Atlas
 // mode is opened so the initial bundle stays small.
@@ -25,10 +27,8 @@ const Graph3D = lazy(() =>
   import("@atlas/graph3d").then((m) => ({ default: m.Graph3D })),
 );
 
-// Shared singletons — the ONE substrate every pane reads/writes.
+// Shared singleton — the ONE substrate every pane reads/writes.
 const store = createLocalStore();
-const provider = createMockProvider();
-const retriever = createRetriever(store, provider);
 
 // Human-readable names for the tag-derived graph clusters.
 const CLUSTER_LABELS: Record<number, string> = {
@@ -54,6 +54,13 @@ export function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // AI engine (local Ollama with mock fallback) shared by suggestions + Ask.
+  const ai = useAiProvider();
+  const retriever = useMemo(
+    () => createRetriever(store, ai.provider),
+    [ai.provider],
+  );
 
   const toggleTag = useCallback((tag: string) => {
     setActiveTags((cur) =>
@@ -300,7 +307,7 @@ export function App() {
         <h2 className="pane-title" style={{ marginTop: 20 }}>
           Suggestions
         </h2>
-        <SuggestionsPanel store={store} provider={provider} />
+        <SuggestionsPanel store={store} provider={ai.provider} />
 
         <h2 className="pane-title" style={{ marginTop: 20 }}>
           Inked links
@@ -310,7 +317,13 @@ export function App() {
         <h2 className="pane-title" style={{ marginTop: 20 }}>
           Ask
         </h2>
-        <ChatPanel retriever={retriever} provider={provider} onPath={setPath} />
+        <AiSettings state={ai} />
+        <ChatPanel
+          retriever={retriever}
+          provider={ai.provider}
+          onPath={setPath}
+          onSelect={setSelectedId}
+        />
       </aside>
     </div>
   );

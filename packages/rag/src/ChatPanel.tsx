@@ -14,6 +14,8 @@ export interface ChatPanelProps {
   provider: AIProvider;
   /** Optional hook so a host can highlight the traversal path in the graph. */
   onPath?: (path: string[]) => void;
+  /** Optional hook to open a cited source block (click-through). */
+  onSelect?: (blockId: string) => void;
 }
 
 interface Result {
@@ -31,6 +33,7 @@ export function ChatPanel({
   retriever,
   provider,
   onPath,
+  onSelect,
 }: ChatPanelProps): JSX.Element {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
@@ -93,12 +96,26 @@ export function ChatPanel({
             <>
               <div className="rag-sources-title">Sources</div>
               <ul className="rag-sources">
-                {result.sources.map((b) => (
-                  <li key={b.id} className="rag-source">
-                    <span className="rag-source-id">[{b.id}]</span>
-                    <span className="rag-source-snippet">{snippet(b.content)}</span>
-                  </li>
-                ))}
+                {result.sources.map((b) =>
+                  onSelect ? (
+                    <li key={b.id} className="rag-source">
+                      <button
+                        type="button"
+                        className="rag-source-link"
+                        onClick={() => onSelect(b.id)}
+                        title="Open this source"
+                      >
+                        <span className="rag-source-id">[{b.id}]</span>
+                        <span className="rag-source-snippet">{snippet(b.content)}</span>
+                      </button>
+                    </li>
+                  ) : (
+                    <li key={b.id} className="rag-source">
+                      <span className="rag-source-id">[{b.id}]</span>
+                      <span className="rag-source-snippet">{snippet(b.content)}</span>
+                    </li>
+                  ),
+                )}
               </ul>
             </>
           )}

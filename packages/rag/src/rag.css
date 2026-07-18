@@ -113,3 +113,19 @@
   font-family: var(--rag-serif);
   line-height: 1.4;
 }
+
+.rag-source-link {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.rag-source-link:hover .rag-source-snippet {
+  color: var(--rag-ink);
+  text-decoration: underline;
+}

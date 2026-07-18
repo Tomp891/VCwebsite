@@ -333,3 +333,83 @@ body {
   padding-top: 6px;
   border-top: 1px solid var(--line);
 }
+
+/* AI engine status + settings for the Ask panel. */
+.ai-engine {
+  margin-bottom: 8px;
+  font-family: var(--sans);
+  font-size: 12px;
+}
+.ai-engine-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ai-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--pencil);
+}
+.ai-dot--live { background: var(--verdigris, #3c6e5b); }
+.ai-dot--down { background: var(--oxblood, #7b2d26); }
+.ai-dot--mock { background: var(--pencil, #9a8c73); }
+.ai-engine-label { color: var(--ink); }
+.ai-engine-cog {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--oxblood);
+  cursor: pointer;
+  font-size: 11px;
+  text-decoration: underline;
+}
+.ai-engine-sub {
+  color: var(--pencil);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+.ai-engine-warn { color: var(--oxblood); }
+.ai-engine-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.ai-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ai-field > span {
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+  color: var(--oxblood);
+  font-size: 11px;
+}
+.ai-field input,
+.ai-field select {
+  font-family: var(--sans);
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper, #fff);
+  color: var(--ink);
+}
+.ai-engine-test {
+  align-self: flex-start;
+  font-family: var(--sans);
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--verdigris, #3c6e5b);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--verdigris, #3c6e5b);
+  cursor: pointer;
+}
+.ai-engine-test:disabled { opacity: 0.6; cursor: default; }
