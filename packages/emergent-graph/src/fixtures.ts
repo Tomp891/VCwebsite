@@ -53,4 +53,11 @@ export const staticEmergentData: EmergentGraphData = {
     n3: { id: "n3", rank: 0.7, clusterId: 1 },
     n6: { id: "n6", rank: 0.4, clusterId: 1 },
   },
+  // Cumulative snapshots so the temporal view has something to play even on the
+  // synchronous fixture: themes accrete their members over three steps.
+  timeline: [
+    { t: 1, assignment: { n1: 0, n2: 1 } },
+    { t: 2, assignment: { n1: 0, n5: 0, n2: 1, n3: 1 } },
+    { t: 3, assignment: { n1: 0, n5: 0, n7: 0, n2: 1, n3: 1, n6: 1 } },
+  ],
 };
