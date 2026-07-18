@@ -42,6 +42,10 @@ interface BlockRowProps {
 
 function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, autoFocus }: BlockRowProps): JSX.Element {
   const ref = useRef<HTMLTextAreaElement>(null);
+  // Bridges the async re-render gap between two rapid Enter presses: holds the
+  // value/caret we just produced so the next keydown reads it instead of the
+  // not-yet-committed DOM value.
+  const pending = useRef<{ value: string; caret: number } | null>(null);
   const [suggest, setSuggest] = useState<WikilinkMatch | null>(null);
   const [active, setActive] = useState(0);
 
@@ -51,6 +55,15 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, au
       ref.current.setSelectionRange(0, 0);
     }
   }, [autoFocus]);
+
+  // Grow the textarea to fit its content so a bullet can hold multiple lines
+  // (one bullet per topic) instead of scrolling inside a single row.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [block.content]);
 
   const matches = useMemo(() => {
     if (!suggest) return [];
@@ -103,8 +116,34 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, au
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       const el = e.currentTarget;
-      const caret = el.selectionStart ?? el.value.length;
-      onEnter(el.value.slice(0, caret), el.value.slice(caret));
+      const src = pending.current ?? { value: el.value, caret: el.selectionStart ?? el.value.length };
+      const value = src.value;
+      const caret = src.caret;
+      const lineStart = value.lastIndexOf("\n", caret - 1) + 1;
+      const nl = value.indexOf("\n", caret);
+      const lineEnd = nl === -1 ? value.length : nl;
+      const currentLine = value.slice(lineStart, lineEnd);
+      // Double-Enter (Enter on an empty line) ends this bullet and starts a new
+      // one; a single Enter just adds a line inside the same bullet, so a topic
+      // stays in one bullet.
+      if (currentLine.trim() === "" && value.trim() !== "") {
+        pending.current = null;
+        const before = value.slice(0, lineStart).replace(/\n$/, "");
+        const after = value.slice(lineEnd);
+        onEnter(before, after);
+        return;
+      }
+      // Insert a newline within the bullet ourselves and place the caret after
+      // it, so the next keystroke (and a possible double-Enter) is reliable.
+      const next = `${value.slice(0, caret)}\n${value.slice(caret)}`;
+      const pos = caret + 1;
+      onChange(next);
+      pending.current = { value: next, caret: pos };
+      requestAnimationFrame(() => {
+        el.focus();
+        el.setSelectionRange(pos, pos);
+        pending.current = null;
+      });
       return;
     }
     if (e.key === "Backspace" && block.content === "") {
@@ -124,11 +163,15 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, au
           rows={1}
           placeholder="Write a block… use [[ to link"
           onChange={(e) => {
+            pending.current = null;
             onChange(e.target.value);
             refresh(e.target);
           }}
           onKeyUp={(e) => refresh(e.currentTarget)}
-          onClick={(e) => refresh(e.currentTarget)}
+          onClick={(e) => {
+            pending.current = null;
+            refresh(e.currentTarget);
+          }}
           onBlur={(e) => {
             onCommit?.(e.currentTarget.value);
             setTimeout(() => setSuggest(null), 120);
