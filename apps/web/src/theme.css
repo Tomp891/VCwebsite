@@ -315,3 +315,21 @@ body {
   font-family: var(--serif);
   font-style: italic;
 }
+
+/* Emergent-themes experience (agent 6 wiring). Fills the graph frame with a
+   mode toggle, the hull/temporal view, and the theme review controls. */
+.emergent-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 8px;
+}
+.emergent-panel__modes { flex: 0 0 auto; }
+.emergent-panel__view { flex: 1 1 auto; min-height: 0; position: relative; }
+.emergent-panel__controls {
+  flex: 0 0 auto;
+  max-height: 40%;
+  overflow-y: auto;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
