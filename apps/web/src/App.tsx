@@ -50,7 +50,23 @@ export function App() {
   const [path, setPath] = useState<string[]>([]);
   const [centerTab, setCenterTab] = useState<CenterTab>("page");
   const [graphMode, setGraphMode] = useState<GraphMode>("2d");
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Expand the graph to fill the browser window. We use a fixed-overlay
+  // (not the native Fullscreen API) because react-force-graph's canvas stops
+  // painting when resized inside a native-fullscreen element.
+  const toggleFullscreen = useCallback(() => setIsFullscreen((v) => !v), []);
+
+  // Esc leaves the expanded view.
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsFullscreen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isFullscreen]);
 
   const graphData = useMemo(
     () => storeToGraphData(store.listBlocks(), store.listEdges()),
@@ -147,9 +163,17 @@ export function App() {
             >
               3D Atlas
             </button>
+            <button
+              className="seg-btn"
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "Exit fullscreen" : "View graph fullscreen"}
+              aria-label={isFullscreen ? "Exit fullscreen" : "View graph fullscreen"}
+            >
+              {isFullscreen ? "Exit" : "Fullscreen"}
+            </button>
           </div>
         </div>
-        <div className="graph-frame">
+        <div className={isFullscreen ? "graph-frame is-fullscreen" : "graph-frame"}>
           {graphMode === "2d" ? (
             <Graph2D
               data={graphData}
@@ -161,6 +185,15 @@ export function App() {
             <Suspense fallback={<div className="graph-loading">Unfolding the atlas…</div>}>
               <Graph3D data={graphData} selectedId={selectedId} onSelect={setSelectedId} />
             </Suspense>
+          )}
+          {isFullscreen && (
+            <button
+              className="graph-fs-exit"
+              onClick={toggleFullscreen}
+              title="Exit fullscreen (Esc)"
+            >
+              Exit fullscreen
+            </button>
           )}
         </div>
 
