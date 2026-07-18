@@ -53,10 +53,25 @@ function resolveWikilink(linkText: string, blocks: Block[]): BlockId | undefined
   return prefix;
 }
 
+/**
+ * Normalised, de-duplicated tag list for a block. Tolerates a missing/non-array
+ * `tags` prop, non-string entries, surrounding whitespace and empty strings, and
+ * collapses case- and whitespace-duplicate tags so a repeated tag on one block
+ * never double-counts a shared-tag edge.
+ */
 function tagList(block: Block): string[] {
   const raw = block.props.tags;
   if (!Array.isArray(raw)) return [];
-  return raw.filter((t): t is string => typeof t === "string").map((t) => t.toLowerCase());
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const t of raw) {
+    if (typeof t !== "string") continue;
+    const tag = t.trim().toLowerCase();
+    if (!tag || seen.has(tag)) continue;
+    seen.add(tag);
+    out.push(tag);
+  }
+  return out;
 }
 
 /** Create an empty graph with the given node ids. */
@@ -101,21 +116,30 @@ export function buildAdjacency(
   options: AdjacencyOptions = {},
 ): WeightedGraph {
   const opts = { ...DEFAULT_ADJACENCY_OPTIONS, ...options };
-  const ids = blocks.map((b) => b.id);
+
+  // Deduplicate blocks by id (first occurrence wins) so malformed input with
+  // repeated ids can't produce duplicate nodes or double-counted edges.
+  const known = new Set<BlockId>();
+  const uniqueBlocks: Block[] = [];
+  for (const block of blocks) {
+    if (known.has(block.id)) continue;
+    known.add(block.id);
+    uniqueBlocks.push(block);
+  }
+  const ids = uniqueBlocks.map((b) => b.id);
   const graph = emptyGraph(ids);
-  const known = new Set(ids);
 
   // wikilinks
-  for (const block of blocks) {
+  for (const block of uniqueBlocks) {
     for (const link of parseWikilinks(block.content)) {
-      const target = resolveWikilink(link, blocks);
+      const target = resolveWikilink(link, uniqueBlocks);
       if (target && known.has(target)) addEdge(graph, block.id, target, opts.wikilinkWeight);
     }
   }
 
   // shared tags
   const byTag = new Map<string, BlockId[]>();
-  for (const block of blocks) {
+  for (const block of uniqueBlocks) {
     for (const tag of tagList(block)) {
       const arr = byTag.get(tag) ?? [];
       arr.push(block.id);
@@ -131,7 +155,7 @@ export function buildAdjacency(
   }
 
   // hierarchy
-  for (const block of blocks) {
+  for (const block of uniqueBlocks) {
     if (block.parentId && known.has(block.parentId)) {
       addEdge(graph, block.id, block.parentId, opts.hierarchyWeight);
     }
