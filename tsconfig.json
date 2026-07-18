@@ -8,6 +8,7 @@
     { "path": "packages/ai" },
     { "path": "packages/db" },
     { "path": "packages/rag" },
+    { "path": "packages/ranking" },
     { "path": "apps/web" }
   ]
 }
