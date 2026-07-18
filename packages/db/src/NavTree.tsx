@@ -14,6 +14,8 @@ export interface SavedQuery {
 export interface NavTreeProps {
   store: EditorStore;
   onOpen?: (blockId: string) => void;
+  /** Controlled highlight — the id the host considers active. */
+  activeId?: string;
   /** override the example saved queries. */
   savedQueries?: SavedQuery[];
 }
@@ -42,9 +44,10 @@ const DEFAULT_QUERIES: SavedQuery[] = [
  * Left-nav over the same blocks: root pages, the tag index, and 1-2 example
  * saved queries. Clicking a page (or a query result) calls `onOpen(id)`.
  */
-export function NavTree({ store, onOpen, savedQueries = DEFAULT_QUERIES }: NavTreeProps): JSX.Element {
+export function NavTree({ store, onOpen, activeId: controlledActiveId, savedQueries = DEFAULT_QUERIES }: NavTreeProps): JSX.Element {
   const blocks = useBlocks(store);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [localActiveId, setActiveId] = useState<string | null>(null);
+  const activeId = controlledActiveId ?? localActiveId;
   const [openQuery, setOpenQuery] = useState<string | null>(null);
 
   const pages = useMemo(() => blocks.filter((b) => b.parentId === null), [blocks]);

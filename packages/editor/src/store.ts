@@ -1,9 +1,10 @@
 import type { Block, BlockId, Edge, EdgeId, EditorStore } from "@atlas/contracts";
 import { mockBlocks, mockEdges } from "@atlas/contracts";
 import { parseWikilinks, resolveWikilink } from "./wikilinks.js";
+import { STORAGE_KEYS } from "./storageKeys.js";
 
-const BLOCKS_KEY = "atlas.editor.blocks";
-const EDGES_KEY = "atlas.editor.edges";
+const BLOCKS_KEY = STORAGE_KEYS.blocks;
+const EDGES_KEY = STORAGE_KEYS.edges;
 
 type Persisted = { blocks: Block[]; edges: Edge[] };
 

@@ -43,7 +43,7 @@ function makeLabelSprite(text: string, color: string): THREE.Sprite {
   const ctx = canvas.getContext("2d");
   if (!ctx) return new THREE.Sprite();
 
-  const font = `italic ${fontSize}px Georgia, "Times New Roman", serif`;
+  const font = `italic ${fontSize}px Spectral, Georgia, "Times New Roman", serif`;
   ctx.font = font;
   const metrics = ctx.measureText(text);
   const width = Math.ceil(metrics.width) + padding * 2;

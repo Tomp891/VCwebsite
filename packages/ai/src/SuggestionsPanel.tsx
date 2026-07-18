@@ -24,6 +24,7 @@ export function SuggestionsPanel(props: SuggestionsPanelProps): JSX.Element {
   const [status, setStatus] = useState<Status>("loading");
   const [error, setError] = useState<string>("");
   const [rejected, setRejected] = useState<Set<string>>(new Set());
+  const [inking, setInking] = useState<Set<string>>(new Set());
   const [blocks, setBlocks] = useState<Block[]>(() => store.listBlocks());
 
   useEffect(() => {
@@ -68,6 +69,7 @@ export function SuggestionsPanel(props: SuggestionsPanelProps): JSX.Element {
 
   const accept = useCallback(
     (s: Suggestion) => {
+      const key = pairKey(s.srcBlockId, s.dstBlockId);
       store.upsertEdge({
         srcBlockId: s.srcBlockId,
         dstBlockId: s.dstBlockId,
@@ -76,7 +78,16 @@ export function SuggestionsPanel(props: SuggestionsPanelProps): JSX.Element {
         confidence: s.confidence,
         provenance: { method: "cosine", detail: s.reason },
       });
-      setRejected((prev) => new Set(prev).add(pairKey(s.srcBlockId, s.dstBlockId)));
+      // Briefly "ink" the pencil row (dashed → solid) before it leaves the list.
+      setInking((prev) => new Set(prev).add(key));
+      window.setTimeout(() => {
+        setRejected((prev) => new Set(prev).add(key));
+        setInking((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }, 480);
     },
     [store],
   );
@@ -104,8 +115,11 @@ export function SuggestionsPanel(props: SuggestionsPanelProps): JSX.Element {
       )}
       {visible.length > 0 && (
         <ul className="atlas-ai__list">
-          {visible.map((s) => (
-            <li className="atlas-ai__row" key={pairKey(s.srcBlockId, s.dstBlockId)}>
+          {visible.map((s) => {
+            const key = pairKey(s.srcBlockId, s.dstBlockId);
+            const isInking = inking.has(key);
+            return (
+            <li className={`atlas-ai__row${isInking ? " is-inking" : ""}`} key={key}>
               <div className="atlas-ai__row-head">
                 <span className="atlas-ai__pair">
                   {labelOf(s.srcBlockId)}
@@ -116,7 +130,7 @@ export function SuggestionsPanel(props: SuggestionsPanelProps): JSX.Element {
                   {Math.round(s.confidence * 100)}%
                 </span>
               </div>
-              <p className="atlas-ai__reason">{s.reason}</p>
+              <p className="atlas-ai__reason" title={`Provenance: ${s.reason}`}>{s.reason}</p>
               <div className="atlas-ai__actions">
                 <button
                   className="atlas-ai__btn atlas-ai__btn--accept"
@@ -134,7 +148,8 @@ export function SuggestionsPanel(props: SuggestionsPanelProps): JSX.Element {
                 </button>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </section>
