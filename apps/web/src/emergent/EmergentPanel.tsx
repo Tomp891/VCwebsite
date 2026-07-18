@@ -15,9 +15,7 @@ import {
   EmergentGraph3D,
   ThemeControls,
   createEmergentEngine,
-  setThemeStatus,
   staticEmergentData,
-  type ThemeStatus,
 } from "@atlas/emergent-graph";
 
 type EmergentMode = "2d" | "3d";
@@ -39,12 +37,15 @@ export function EmergentPanel(props: EmergentPanelProps): JSX.Element {
   // Start from the tiny static fixture so the pane paints instantly, then swap
   // in the live bundle once the (async) engine finishes.
   const [baseData, setBaseData] = useState<EmergentGraphData>(staticEmergentData);
-  // Human review states survive recomputes: keyed by clusterId.
-  const [overrides, setOverrides] = useState<Record<number, ThemeStatus>>({});
+  // Once the human edits anything (ink/rename/merge/split) their bundle is
+  // authoritative and the AI never overwrites it — recompute pauses until they
+  // explicitly re-sync. `reviewed === null` means "follow the live AI output".
+  const [reviewed, setReviewed] = useState<EmergentGraphData | null>(null);
   const [mode, setMode] = useState<EmergentMode>("2d");
   const [focusThemeId, setFocusThemeId] = useState<number | null>(null);
 
   useEffect(() => {
+    if (reviewed) return; // human structure is pinned; don't let the AI clobber it.
     let live = true;
     engine.compute(blocks).then((next) => {
       if (live) setBaseData(next);
@@ -52,23 +53,9 @@ export function EmergentPanel(props: EmergentPanelProps): JSX.Element {
     return () => {
       live = false;
     };
-  }, [engine, blocks, version]);
+  }, [engine, blocks, version, reviewed]);
 
-  // Fold the human overrides back onto whatever the engine produced.
-  const data = useMemo(() => {
-    let d = baseData;
-    for (const theme of baseData.themes) {
-      const status = overrides[theme.clusterId];
-      if (status && status !== theme.status) d = setThemeStatus(d, theme.clusterId, status);
-    }
-    return d;
-  }, [baseData, overrides]);
-
-  const onControlsChange = (next: EmergentGraphData) => {
-    const map: Record<number, ThemeStatus> = {};
-    for (const t of next.themes) map[t.clusterId] = t.status;
-    setOverrides(map);
-  };
+  const data = reviewed ?? baseData;
 
   return (
     <div className="emergent-panel">
@@ -105,11 +92,22 @@ export function EmergentPanel(props: EmergentPanelProps): JSX.Element {
       </div>
       {data.themes.length > 0 && (
         <div className="emergent-panel__controls">
+          {reviewed && (
+            <button
+              type="button"
+              className="seg-btn emergent-panel__resync"
+              title="Discard manual edits and adopt the latest AI suggestions"
+              onClick={() => setReviewed(null)}
+            >
+              Re-sync with AI
+            </button>
+          )}
           <ThemeControls
             data={data}
             focusThemeId={focusThemeId}
+            selectedId={selectedId}
             onFocus={setFocusThemeId}
-            onChange={onControlsChange}
+            onChange={setReviewed}
           />
         </div>
       )}

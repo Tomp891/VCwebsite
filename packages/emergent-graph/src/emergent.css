@@ -64,6 +64,76 @@
   border-color: #3c6e5b;
 }
 
+.atlas-emergent-controls__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.atlas-emergent-controls__theme {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(30, 42, 58, 0.08);
+}
+
+.atlas-emergent-controls__hint {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: #8a7f6b;
+}
+
+.atlas-emergent-controls__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.atlas-emergent-controls__dot--ink {
+  background: #3c6e5b;
+  border: 1px solid #1e2a3a;
+}
+
+.atlas-emergent-controls__dot--pencil {
+  background: transparent;
+  border: 1px dashed #8a7f6b;
+}
+
+.atlas-emergent-controls__confidence {
+  font-size: 12px;
+  color: #7b2d26;
+  font-variant-numeric: tabular-nums;
+}
+
+.atlas-emergent-controls__why {
+  margin: 0;
+  font-size: 11px;
+  color: #8a7f6b;
+  font-style: italic;
+}
+
+.atlas-emergent-controls__rename {
+  flex: 1;
+  font-family: inherit;
+  font-size: 13px;
+  color: #1e2a3a;
+  border: 1px solid #3c6e5b;
+  border-radius: 4px;
+  padding: 1px 6px;
+  background: #fffdf6;
+}
+
+.atlas-emergent-controls__merge {
+  font-family: inherit;
+  font-size: 12px;
+  color: #1e2a3a;
+  border: 1px solid rgba(30, 42, 58, 0.3);
+  border-radius: 4px;
+  background: transparent;
+  padding: 2px 4px;
+}
+
 .atlas-emergent-playback {
   display: flex;
   align-items: center;

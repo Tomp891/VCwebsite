@@ -41,7 +41,18 @@ export type {
 } from "./temporal.js";
 
 // Focus + context and theme controls (subagent e)
-export { themeMembers, isDimmed, focusOpacity, setThemeStatus, visibleHulls } from "./focus.js";
+export {
+  themeMembers,
+  isDimmed,
+  focusOpacity,
+  setThemeStatus,
+  visibleHulls,
+  isInked,
+  themeProvenance,
+  renameTheme,
+  mergeThemes,
+  splitTheme,
+} from "./focus.js";
 export { ThemeControls } from "./ThemeControls.js";
 export type { ThemeControlsProps } from "./ThemeControls.js";
 
