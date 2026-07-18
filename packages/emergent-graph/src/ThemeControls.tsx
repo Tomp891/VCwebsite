@@ -51,24 +51,34 @@ export function ThemeControls(props: ThemeControlsProps): JSX.Element {
               }
               style={{ textAlign: "left", background: "none", border: "none", cursor: "pointer" }}
               onClick={() => onFocus?.(focused ? null : theme.clusterId)}
+              aria-pressed={focused}
               title={theme.summary}
             >
               {theme.label}
             </button>
-            {STATUSES.map((status) => (
-              <button
-                key={status}
-                type="button"
-                className={
-                  theme.status === status
-                    ? "atlas-emergent-controls__btn atlas-emergent-controls__btn--active"
-                    : "atlas-emergent-controls__btn"
-                }
-                onClick={() => apply(theme.clusterId, status)}
-              >
-                {LABEL[status]}
-              </button>
-            ))}
+            {STATUSES.map((status) => {
+              const active = theme.status === status;
+              return (
+                <button
+                  key={status}
+                  type="button"
+                  className={
+                    active
+                      ? "atlas-emergent-controls__btn atlas-emergent-controls__btn--active"
+                      : "atlas-emergent-controls__btn"
+                  }
+                  aria-pressed={active}
+                  title={
+                    active
+                      ? `Return "${theme.label}" to ambient`
+                      : `${LABEL[status]} "${theme.label}"`
+                  }
+                  onClick={() => apply(theme.clusterId, status)}
+                >
+                  {LABEL[status]}
+                </button>
+              );
+            })}
           </div>
         );
       })}
