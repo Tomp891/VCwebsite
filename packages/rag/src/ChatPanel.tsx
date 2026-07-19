@@ -1,6 +1,7 @@
 /** GraphRAG chat UI: ask a question, get a grounded answer + cited sources.
- *  Keeps a persisted backlog of previous turns (question + answer + sources). */
-import { useCallback, useEffect, useState } from "react";
+ *  Chats are grouped into conversations that persist locally: the history
+ *  picker lists past chats so any of them can be reopened and resumed. */
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   AIProvider,
   Block,
@@ -36,7 +37,7 @@ interface StoredSource {
   snippet: string;
 }
 
-/** One question/answer exchange in the backlog. */
+/** One question/answer exchange in a conversation. */
 export interface ChatTurn {
   id: string;
   question: string;
@@ -46,25 +47,76 @@ export interface ChatTurn {
   at: number;
 }
 
-const HISTORY_KEY = "atlas.chat.history";
-const MAX_TURNS = 50;
+/** A named, resumable chat: its turns are stored newest-first. */
+export interface Conversation {
+  id: string;
+  title: string;
+  turns: ChatTurn[];
+  createdAt: number;
+  updatedAt: number;
+}
 
-function loadHistory(): ChatTurn[] {
+const LEGACY_HISTORY_KEY = "atlas.chat.history";
+const CONVERSATIONS_KEY = "atlas.chat.conversations";
+const ACTIVE_KEY = "atlas.chat.active";
+const MAX_TURNS = 50;
+const MAX_CONVERSATIONS = 30;
+
+function loadConversations(): Conversation[] {
   try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? (parsed as ChatTurn[]) : [];
+    const raw = localStorage.getItem(CONVERSATIONS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) return parsed as Conversation[];
+    }
+    // Migrate the flat pre-conversation backlog into a single conversation.
+    const legacy = localStorage.getItem(LEGACY_HISTORY_KEY);
+    if (legacy) {
+      const turns = JSON.parse(legacy) as ChatTurn[];
+      if (Array.isArray(turns) && turns.length > 0) {
+        const at = turns[turns.length - 1]?.at ?? Date.now();
+        return [
+          {
+            id: newId("chat"),
+            title: turns[turns.length - 1]?.question ?? "Earlier chat",
+            turns,
+            createdAt: at,
+            updatedAt: turns[0]?.at ?? at,
+          },
+        ];
+      }
+    }
+    return [];
   } catch {
     return [];
   }
 }
 
-function saveHistory(turns: ChatTurn[]): void {
+function saveConversations(conversations: Conversation[]): void {
   try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(turns.slice(0, MAX_TURNS)));
+    localStorage.setItem(
+      CONVERSATIONS_KEY,
+      JSON.stringify(conversations.slice(0, MAX_CONVERSATIONS)),
+    );
   } catch {
     // ignore storage failures (private mode, quota)
+  }
+}
+
+function loadActiveId(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function saveActiveId(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(ACTIVE_KEY, id);
+    else localStorage.removeItem(ACTIVE_KEY);
+  } catch {
+    // ignore storage failures
   }
 }
 
@@ -73,8 +125,8 @@ function snippet(content: string, max = 120): string {
   return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
 }
 
-function newId(): string {
-  return `turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+function newId(prefix = "turn"): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function timeLabel(at: number): string {
@@ -83,6 +135,11 @@ function timeLabel(at: number): string {
   } catch {
     return "";
   }
+}
+
+function titleFrom(question: string, max = 48): string {
+  const t = question.trim().replace(/\s+/g, " ");
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 }
 
 export function ChatPanel({
@@ -98,11 +155,49 @@ export function ChatPanel({
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [history, setHistory] = useState<ChatTurn[]>(loadHistory);
+  const [conversations, setConversations] = useState<Conversation[]>(loadConversations);
+  const [activeId, setActiveId] = useState<string | null>(loadActiveId);
+  const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
-    saveHistory(history);
-  }, [history]);
+    saveConversations(conversations);
+  }, [conversations]);
+  useEffect(() => {
+    saveActiveId(activeId);
+  }, [activeId]);
+
+  const active = useMemo(
+    () => conversations.find((c) => c.id === activeId) ?? null,
+    [conversations, activeId],
+  );
+  const history = active?.turns ?? [];
+
+  /** Append a turn to the active conversation, creating one when needed. */
+  const appendTurn = useCallback(
+    (turn: ChatTurn) => {
+      setConversations((cur) => {
+        const existing = activeId ? cur.find((c) => c.id === activeId) : null;
+        if (existing) {
+          const updated: Conversation = {
+            ...existing,
+            turns: [turn, ...existing.turns].slice(0, MAX_TURNS),
+            updatedAt: turn.at,
+          };
+          return [updated, ...cur.filter((c) => c.id !== existing.id)];
+        }
+        const created: Conversation = {
+          id: newId("chat"),
+          title: titleFrom(turn.question),
+          turns: [turn],
+          createdAt: turn.at,
+          updatedAt: turn.at,
+        };
+        setActiveId(created.id);
+        return [created, ...cur].slice(0, MAX_CONVERSATIONS);
+      });
+    },
+    [activeId],
+  );
 
   const ask = useCallback(
     async (q: string) => {
@@ -113,22 +208,21 @@ export function ChatPanel({
       try {
         const meta = metaAnswer?.(trimmed) ?? null;
         if (meta !== null) {
-          const turn: ChatTurn = {
+          appendTurn({
             id: newId(),
             question: trimmed,
             answer: meta,
             sources: [],
             path: [],
             at: Date.now(),
-          };
-          setHistory((cur) => [turn, ...cur].slice(0, MAX_TURNS));
+          });
           setQuery("");
           onPath?.([]);
           return;
         }
         // Conversational memory: the newest `memoryTurns` exchanges, oldest→
         // newest, both to resolve follow-ups during retrieval and as prompt
-        // context. `history` is stored newest-first, so reverse the head slice.
+        // context. Turns are stored newest-first, so reverse the head slice.
         const recent: PriorTurn[] = history
           .slice(0, memoryTurns)
           .reverse()
@@ -147,15 +241,14 @@ export function ChatPanel({
           .map((id) => byId.get(id))
           .filter((b): b is Block => b !== undefined)
           .map((b) => ({ id: b.id, snippet: snippet(b.content) }));
-        const turn: ChatTurn = {
+        appendTurn({
           id: newId(),
           question: trimmed,
           answer: ans.text,
           sources,
           path: ans.path,
           at: Date.now(),
-        };
-        setHistory((cur) => [turn, ...cur].slice(0, MAX_TURNS));
+        });
         setQuery("");
         onPath?.(ans.path);
       } catch (err) {
@@ -164,13 +257,102 @@ export function ChatPanel({
         setBusy(false);
       }
     },
-    [retriever, provider, busy, onPath, getOverview, metaAnswer, getThemes, memoryTurns, history],
+    [retriever, provider, busy, onPath, getOverview, metaAnswer, getThemes, memoryTurns, history, appendTurn],
   );
 
-  const clearHistory = useCallback(() => setHistory([]), []);
+  const newChat = useCallback(() => {
+    setActiveId(null);
+    setShowHistory(false);
+    setError(null);
+  }, []);
+
+  const openChat = useCallback((id: string) => {
+    setActiveId(id);
+    setShowHistory(false);
+  }, []);
+
+  const deleteChat = useCallback(
+    (id: string) => {
+      setConversations((cur) => cur.filter((c) => c.id !== id));
+      if (activeId === id) setActiveId(null);
+    },
+    [activeId],
+  );
+
+  const clearHistory = useCallback(() => {
+    setConversations([]);
+    setActiveId(null);
+    setShowHistory(false);
+  }, []);
 
   return (
     <div className="rag-panel">
+      <div className="rag-chatbar">
+        <button
+          type="button"
+          className="rag-chatbar-btn"
+          onClick={newChat}
+          title="Start a new chat"
+        >
+          + New chat
+        </button>
+        <button
+          type="button"
+          className="rag-chatbar-btn"
+          onClick={() => setShowHistory((v) => !v)}
+          aria-expanded={showHistory}
+          title="Browse previous chats"
+        >
+          History · {conversations.length}
+        </button>
+        {active && <span className="rag-chatbar-current">{active.title}</span>}
+      </div>
+
+      {showHistory && (
+        <div className="rag-chats">
+          {conversations.length === 0 ? (
+            <div className="rag-status">No previous chats yet.</div>
+          ) : (
+            <>
+              <ul className="rag-chat-list">
+                {conversations.map((c) => (
+                  <li key={c.id} className={c.id === activeId ? "rag-chat is-active" : "rag-chat"}>
+                    <button
+                      type="button"
+                      className="rag-chat-open"
+                      onClick={() => openChat(c.id)}
+                      title={`Resume — last active ${timeLabel(c.updatedAt)}`}
+                    >
+                      <span className="rag-chat-title">{c.title}</span>
+                      <span className="rag-chat-meta">
+                        {c.turns.length} turn{c.turns.length === 1 ? "" : "s"} · {timeLabel(c.updatedAt)}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="rag-chat-delete"
+                      onClick={() => deleteChat(c.id)}
+                      aria-label="Delete this chat"
+                      title="Delete this chat"
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                className="rag-history-clear"
+                onClick={clearHistory}
+                title="Delete all chats"
+              >
+                Clear all chats
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       <form
         className="rag-form"
         onSubmit={(e) => {
@@ -196,20 +378,6 @@ export function ChatPanel({
 
       {history.length > 0 && (
         <div className="rag-history">
-          <div className="rag-history-head">
-            <span className="rag-history-title">
-              History · {history.length}
-            </span>
-            <button
-              type="button"
-              className="rag-history-clear"
-              onClick={clearHistory}
-              title="Clear chat history"
-            >
-              Clear
-            </button>
-          </div>
-
           {history.map((turn) => (
             <div key={turn.id} className="rag-turn">
               <div className="rag-turn-q" title={timeLabel(turn.at)}>
