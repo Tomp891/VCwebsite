@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { AiState } from "./useAiProvider.js";
+import { missingModels, OllamaSetupGuide } from "./OllamaSetupGuide.js";
 
 /** Compact status + configuration for the AI engine that powers Ask. */
 export function AiSettings({ state }: { state: AiState }): JSX.Element {
@@ -33,19 +34,24 @@ export function AiSettings({ state }: { state: AiState }): JSX.Element {
         </button>
       </div>
 
-      {config.engine === "ollama" && live && probe && (
-        <div className="ai-engine-sub">
-          {probe.models.includes(config.chatModel)
-            ? `Using ${config.chatModel}`
-            : `⚠ ${config.chatModel} not pulled — run: ollama pull ${config.chatModel}`}
-        </div>
-      )}
+      {config.engine === "ollama" &&
+        live &&
+        probe &&
+        missingModels(config, probe).length === 0 && (
+          <div className="ai-engine-sub">Using {config.chatModel}</div>
+        )}
       {config.engine === "ollama" && !live && !probing && (
         <div className="ai-engine-sub">
           Falls back to mock answers until Ollama is reachable
           {probe?.error ? ` (${probe.error})` : ""}.
         </div>
       )}
+      <OllamaSetupGuide
+        config={config}
+        probe={probe}
+        probing={probing}
+        refresh={refresh}
+      />
       {fellBack && live && (
         <div className="ai-engine-sub ai-engine-warn">
           A recent model call failed — that response used the mock.
