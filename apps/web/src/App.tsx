@@ -27,6 +27,7 @@ import { GraphPreview } from "./GraphPreview.js";
 import { TagSuggestionsPanel } from "./TagSuggestionsPanel.js";
 import { EmergentPanel } from "./emergent/EmergentPanel.js";
 import { AiSettings } from "./ai/AiSettings.js";
+import { SearchOverlay } from "./SearchOverlay.js";
 import { useAiProvider } from "./ai/useAiProvider.js";
 
 // 3D pulls in three.js + 3d-force-graph (~large). Load it only when the Atlas
@@ -93,6 +94,19 @@ export function App() {
     localStorage.setItem("atlas.nav.collapsed", navCollapsed ? "1" : "0");
   }, [navCollapsed]);
   const [activeTags, setActiveTags] = useState<string[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Cmd+K / Ctrl+K opens the full-text search overlay.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   // AI engine (local Ollama with mock fallback) shared by suggestions + Ask.
   const ai = useAiProvider();
@@ -311,6 +325,15 @@ export function App() {
           <>
         <h1 className="brand">Atlas</h1>
         <div className="brand-sub">a cartography of thought</div>
+        <button
+          type="button"
+          className="search-trigger"
+          onClick={() => setSearchOpen(true)}
+          title="Search all pages and blocks (Ctrl+K / Cmd+K)"
+        >
+          <span>Search…</span>
+          <kbd className="search-kbd">⌘K</kbd>
+        </button>
         <NavTree
           store={store}
           activeId={selectedPageId}
@@ -472,6 +495,14 @@ export function App() {
           getThemes={() => ragRef.current.themeSummaries}
         />
       </aside>
+
+      {searchOpen && (
+        <SearchOverlay
+          store={store}
+          onOpen={setSelectedId}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
     </div>
   );
 }
