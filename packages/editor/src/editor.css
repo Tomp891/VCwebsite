@@ -178,6 +178,53 @@
 .atlas-block-rendered strong {
   font-weight: 700;
 }
+.atlas-block-rendered em {
+  font-style: italic;
+}
+.atlas-block-rendered mark {
+  background: rgba(214, 168, 45, 0.35);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* Floating formatting toolbar shown while text is selected in a block. */
+.atlas-format-bar {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  bottom: 100%;
+  margin-bottom: 4px;
+  display: flex;
+  gap: 2px;
+  background: var(--ink);
+  border-radius: 6px;
+  padding: 3px 4px;
+  box-shadow: 0 2px 8px rgba(30, 42, 58, 0.35);
+}
+.atlas-format-btn {
+  background: transparent;
+  border: none;
+  color: var(--parchment);
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.atlas-format-btn:hover {
+  background: rgba(244, 236, 216, 0.18);
+}
+.atlas-format-b {
+  font-weight: 700;
+}
+.atlas-format-i {
+  font-style: italic;
+}
+.atlas-format-h {
+  background: rgba(214, 168, 45, 0.45);
+}
 
 /* Heading blocks: `# `, `## `, `### ` prefixes. Sizes apply while editing too. */
 .atlas-block-input.atlas-h1,

@@ -27,27 +27,32 @@ function activeWikilink(value: string, caret: number): WikilinkMatch | null {
   return { query: between, start: open + 2 };
 }
 
-/** Render inline markdown bold: `**text**` becomes <strong>text</strong>. */
+/** Render inline markdown: `**bold**`, `*italic*` and `==highlight==`. */
 function renderInline(content: string): Array<JSX.Element | string> {
   const out: Array<JSX.Element | string> = [];
-  const re = /\*\*([^*\n][^*]*?)\*\*/g;
+  const re = /\*\*([^*\n][^*]*?)\*\*|\*([^*\n]+?)\*|==([^=\n]+?)==/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let key = 0;
   while ((m = re.exec(content)) !== null) {
     if (m.index > last) out.push(content.slice(last, m.index));
-    out.push(<strong key={key++}>{m[1]}</strong>);
+    if (m[1] !== undefined) out.push(<strong key={key++}>{m[1]}</strong>);
+    else if (m[2] !== undefined) out.push(<em key={key++}>{m[2]}</em>);
+    else out.push(<mark key={key++}>{m[3]}</mark>);
     last = m.index + m[0].length;
   }
   if (last < content.length) out.push(content.slice(last));
   return out;
 }
 
-/** Wrap the selection (or the word at the caret) in `**`, or unwrap it. */
-function toggleBold(
+const INLINE_MARKUP = /\*\*[^*\n][^*]*?\*\*|\*[^*\n]+?\*|==[^=\n]+?==/;
+
+/** Wrap the selection (or the word at the caret) in `marker`, or unwrap it. */
+function toggleWrap(
   value: string,
   selStart: number,
   selEnd: number,
+  marker: string,
 ): { value: string; selStart: number; selEnd: number } {
   let start = selStart;
   let end = selEnd;
@@ -56,28 +61,29 @@ function toggleBold(
     while (start > 0 && !/\s/.test(value[start - 1])) start--;
     while (end < value.length && !/\s/.test(value[end])) end++;
   }
+  const n = marker.length;
   const before = value.slice(0, start);
   const inner = value.slice(start, end);
   const after = value.slice(end);
-  if (before.endsWith("**") && after.startsWith("**")) {
-    // Already bold: unwrap.
+  if (before.endsWith(marker) && after.startsWith(marker)) {
+    // Already wrapped: unwrap.
     return {
-      value: `${before.slice(0, -2)}${inner}${after.slice(2)}`,
-      selStart: start - 2,
-      selEnd: end - 2,
+      value: `${before.slice(0, -n)}${inner}${after.slice(n)}`,
+      selStart: start - n,
+      selEnd: end - n,
     };
   }
-  if (inner.startsWith("**") && inner.endsWith("**") && inner.length >= 4) {
+  if (inner.startsWith(marker) && inner.endsWith(marker) && inner.length >= 2 * n) {
     return {
-      value: `${before}${inner.slice(2, -2)}${after}`,
+      value: `${before}${inner.slice(n, -n)}${after}`,
       selStart: start,
-      selEnd: end - 4,
+      selEnd: end - 2 * n,
     };
   }
   return {
-    value: `${before}**${inner}**${after}`,
-    selStart: start + 2,
-    selEnd: end + 2,
+    value: `${before}${marker}${inner}${marker}${after}`,
+    selStart: start + n,
+    selEnd: end + n,
   };
 }
 
@@ -120,9 +126,11 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, on
   // Blocks containing **bold** markup show a rendered view while not being
   // edited; clicking it (or being auto-focused) swaps back to the textarea.
   const [editing, setEditing] = useState(Boolean(autoFocus));
-  const hasBold = /\*\*[^*\n][^*]*?\*\*/.test(block.content);
+  // A floating formatting toolbar is shown while text is selected.
+  const [hasSelection, setHasSelection] = useState(false);
+  const hasMarkup = INLINE_MARKUP.test(block.content);
   const heading = headingLevel(block.content);
-  const showRendered = (hasBold || heading > 0) && !editing;
+  const showRendered = (hasMarkup || heading > 0) && !editing;
   const headingClass = heading > 0 ? ` atlas-h${heading}` : "";
 
   useEffect(() => {
@@ -245,15 +253,9 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, on
       onIndent(e.shiftKey ? -1 : 1);
       return;
     }
-    if (e.key === "b" && (e.metaKey || e.ctrlKey)) {
+    if ((e.metaKey || e.ctrlKey) && (e.key === "b" || e.key === "i" || e.key === "h")) {
       e.preventDefault();
-      const el = e.currentTarget;
-      const res = toggleBold(el.value, el.selectionStart ?? 0, el.selectionEnd ?? 0);
-      el.value = res.value;
-      el.setSelectionRange(res.selStart, res.selEnd);
-      autoGrow();
-      pending.current = null;
-      onChange(res.value);
+      applyFormat(e.key === "b" ? "**" : e.key === "i" ? "*" : "==");
       return;
     }
     if (e.key === "Backspace" && block.content === "") {
@@ -261,6 +263,24 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, on
       onDelete();
     }
   }
+
+  function applyFormat(marker: string): void {
+    const el = ref.current;
+    if (!el) return;
+    const res = toggleWrap(el.value, el.selectionStart ?? 0, el.selectionEnd ?? 0, marker);
+    el.value = res.value;
+    el.focus();
+    el.setSelectionRange(res.selStart, res.selEnd);
+    autoGrow();
+    pending.current = null;
+    onChange(res.value);
+  }
+
+  const updateSelection = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    setHasSelection((el.selectionStart ?? 0) !== (el.selectionEnd ?? 0));
+  }, []);
 
   const indentStyle = indent > 0 ? { marginLeft: indent * 24 } : undefined;
 
@@ -285,6 +305,43 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, on
     <div className="atlas-block-row" style={indentStyle}>
       <span className="atlas-bullet">•</span>
       <div className="atlas-block-field">
+        {hasSelection && (
+          <div className="atlas-format-bar" role="toolbar" aria-label="Text formatting">
+            <button
+              type="button"
+              className="atlas-format-btn atlas-format-b"
+              title="Bold (⌘B)"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                applyFormat("**");
+              }}
+            >
+              B
+            </button>
+            <button
+              type="button"
+              className="atlas-format-btn atlas-format-i"
+              title="Italic (⌘I)"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                applyFormat("*");
+              }}
+            >
+              I
+            </button>
+            <button
+              type="button"
+              className="atlas-format-btn atlas-format-h"
+              title="Highlight (⌘H)"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                applyFormat("==");
+              }}
+            >
+              H
+            </button>
+          </div>
+        )}
         <textarea
           ref={ref}
           className={`atlas-block-input${headingClass}`}
@@ -296,14 +353,19 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, on
             onChange(e.target.value);
             refresh(e.target);
           }}
-          onKeyUp={(e) => refresh(e.currentTarget)}
+          onKeyUp={(e) => {
+            refresh(e.currentTarget);
+            updateSelection();
+          }}
           onClick={(e) => {
             pending.current = null;
             refresh(e.currentTarget);
           }}
+          onSelect={updateSelection}
           onBlur={(e) => {
             onCommit?.(e.currentTarget.value);
             setEditing(false);
+            setHasSelection(false);
             setTimeout(() => setSuggest(null), 120);
           }}
           onFocus={() => setEditing(true)}
