@@ -14,6 +14,7 @@
     "@atlas/graph": "*",
     "@atlas/graph3d": "*",
     "@atlas/ai": "*",
+    "@atlas/autotag": "*",
     "@atlas/db": "*",
     "@atlas/rag": "*",
     "@atlas/embeddings": "*",

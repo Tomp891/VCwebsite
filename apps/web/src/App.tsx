@@ -24,6 +24,7 @@ import { storeToGraphData } from "./graphData.js";
 import { DataSafety } from "./DataSafety.js";
 import { LinksPanel } from "./LinksPanel.js";
 import { GraphPreview } from "./GraphPreview.js";
+import { TagSuggestionsPanel } from "./TagSuggestionsPanel.js";
 import { EmergentPanel } from "./emergent/EmergentPanel.js";
 import { AiSettings } from "./ai/AiSettings.js";
 import { useAiProvider } from "./ai/useAiProvider.js";
@@ -430,6 +431,7 @@ export function App() {
           Suggestions
         </h2>
         <SuggestionsPanel store={store} provider={ai.provider} />
+        <TagSuggestionsPanel store={store} version={version} onSelect={setSelectedId} />
 
         <h2 className="pane-title" style={{ marginTop: 20 }}>
           Inked links
