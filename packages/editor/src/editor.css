@@ -225,6 +225,33 @@
 .atlas-format-h {
   background: rgba(214, 168, 45, 0.45);
 }
+.atlas-format-s {
+  text-decoration: line-through;
+}
+.atlas-format-code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+}
+.atlas-format-btn.is-active {
+  background: rgba(244, 236, 216, 0.3);
+}
+.atlas-format-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 3px;
+  background: rgba(244, 236, 216, 0.3);
+}
+.atlas-block-rendered s {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+.atlas-block-rendered code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.88em;
+  background: rgba(30, 42, 58, 0.08);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
 
 /* Heading blocks: `# `, `## `, `### ` prefixes. Sizes apply while editing too. */
 .atlas-block-input.atlas-h1,

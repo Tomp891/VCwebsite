@@ -27,10 +27,12 @@ function activeWikilink(value: string, caret: number): WikilinkMatch | null {
   return { query: between, start: open + 2 };
 }
 
-/** Render inline markdown: `**bold**`, `*italic*` and `==highlight==`. */
+/** Render inline markdown: `**bold**`, `*italic*`, `==highlight==`,
+ *  `~~strikethrough~~` and `` `code` ``. */
 function renderInline(content: string): Array<JSX.Element | string> {
   const out: Array<JSX.Element | string> = [];
-  const re = /\*\*([^*\n][^*]*?)\*\*|\*([^*\n]+?)\*|==([^=\n]+?)==/g;
+  const re =
+    /\*\*([^*\n][^*]*?)\*\*|\*([^*\n]+?)\*|==([^=\n]+?)==|~~([^~\n]+?)~~|`([^`\n]+?)`/g;
   let last = 0;
   let m: RegExpExecArray | null;
   let key = 0;
@@ -38,14 +40,24 @@ function renderInline(content: string): Array<JSX.Element | string> {
     if (m.index > last) out.push(content.slice(last, m.index));
     if (m[1] !== undefined) out.push(<strong key={key++}>{m[1]}</strong>);
     else if (m[2] !== undefined) out.push(<em key={key++}>{m[2]}</em>);
-    else out.push(<mark key={key++}>{m[3]}</mark>);
+    else if (m[3] !== undefined) out.push(<mark key={key++}>{m[3]}</mark>);
+    else if (m[4] !== undefined) out.push(<s key={key++}>{m[4]}</s>);
+    else out.push(<code key={key++}>{m[5]}</code>);
     last = m.index + m[0].length;
   }
   if (last < content.length) out.push(content.slice(last));
   return out;
 }
 
-const INLINE_MARKUP = /\*\*[^*\n][^*]*?\*\*|\*[^*\n]+?\*|==[^=\n]+?==/;
+const INLINE_MARKUP =
+  /\*\*[^*\n][^*]*?\*\*|\*[^*\n]+?\*|==[^=\n]+?==|~~[^~\n]+?~~|`[^`\n]+?`/;
+
+/** Set, change or clear (level 0 / same level) a block's heading prefix. */
+function toggleHeading(value: string, level: 1 | 2 | 3): string {
+  const cur = headingLevel(value);
+  const body = cur > 0 ? value.slice(cur + 1) : value;
+  return cur === level ? body : `${"#".repeat(level)} ${body}`;
+}
 
 /** Wrap the selection (or the word at the caret) in `marker`, or unwrap it. */
 function toggleWrap(
@@ -264,6 +276,20 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, on
     }
   }
 
+  function wrapLink(): void {
+    const el = ref.current;
+    if (!el) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    const next = `${el.value.slice(0, start)}[[${el.value.slice(start, end)}]]${el.value.slice(end)}`;
+    el.value = next;
+    el.focus();
+    el.setSelectionRange(start + 2, end + 2);
+    autoGrow();
+    pending.current = null;
+    onChange(next);
+  }
+
   function applyFormat(marker: string): void {
     const el = ref.current;
     if (!el) return;
@@ -274,6 +300,20 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, on
     autoGrow();
     pending.current = null;
     onChange(res.value);
+  }
+
+  function applyHeading(level: 1 | 2 | 3): void {
+    const el = ref.current;
+    if (!el) return;
+    const next = toggleHeading(el.value, level);
+    el.value = next;
+    el.focus();
+    const end = next.length;
+    el.setSelectionRange(end, end);
+    autoGrow();
+    pending.current = null;
+    onChange(next);
+    setHasSelection(false);
   }
 
   const updateSelection = useCallback(() => {
@@ -307,39 +347,45 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, on
       <div className="atlas-block-field">
         {hasSelection && (
           <div className="atlas-format-bar" role="toolbar" aria-label="Text formatting">
-            <button
-              type="button"
-              className="atlas-format-btn atlas-format-b"
-              title="Bold (⌘B)"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                applyFormat("**");
-              }}
-            >
-              B
-            </button>
-            <button
-              type="button"
-              className="atlas-format-btn atlas-format-i"
-              title="Italic (⌘I)"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                applyFormat("*");
-              }}
-            >
-              I
-            </button>
-            <button
-              type="button"
-              className="atlas-format-btn atlas-format-h"
-              title="Highlight (⌘H)"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                applyFormat("==");
-              }}
-            >
-              H
-            </button>
+            {(
+              [
+                { label: "B", title: "Bold (⌘B)", marker: "**", cls: " atlas-format-b" },
+                { label: "I", title: "Italic (⌘I)", marker: "*", cls: " atlas-format-i" },
+                { label: "H", title: "Highlight (⌘H)", marker: "==", cls: " atlas-format-h" },
+                { label: "S", title: "Strikethrough", marker: "~~", cls: " atlas-format-s" },
+                { label: "<>", title: "Code", marker: "`", cls: " atlas-format-code" },
+                { label: "[[]]", title: "Link to page", marker: null, cls: "" },
+              ] as Array<{ label: string; title: string; marker: string | null; cls: string }>
+            ).map((btn) => (
+              <button
+                key={btn.label}
+                type="button"
+                className={`atlas-format-btn${btn.cls}`}
+                title={btn.title}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  if (btn.marker !== null) applyFormat(btn.marker);
+                  else wrapLink();
+                }}
+              >
+                {btn.label}
+              </button>
+            ))}
+            <span className="atlas-format-sep" />
+            {([1, 2, 3] as const).map((lvl) => (
+              <button
+                key={lvl}
+                type="button"
+                className={`atlas-format-btn${heading === lvl ? " is-active" : ""}`}
+                title={`Heading ${lvl}`}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  applyHeading(lvl);
+                }}
+              >
+                H{lvl}
+              </button>
+            ))}
           </div>
         )}
         <textarea
