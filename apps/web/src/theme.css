@@ -101,6 +101,48 @@ body {
 }
 .brand-sub { color: var(--ink-soft); font-style: italic; font-family: var(--serif); margin-bottom: 16px; }
 
+/* Journal — Today button + collapsible list of recent daily notes. */
+.journal-nav { margin-bottom: 6px; }
+.journal-today {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 5px 10px;
+  font-family: var(--serif);
+  font-size: 13px;
+  text-align: left;
+  background: var(--parchment);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.journal-today:hover { border-color: var(--pencil); background: var(--parchment-2); }
+.journal-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 2px 0 6px;
+  font-family: var(--serif);
+  font-variant: small-caps;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+.journal-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--pencil);
+  font-variant: normal;
+}
+
 .pane-title-row { display: flex; align-items: center; justify-content: space-between; }
 
 .tabbar { display: flex; gap: 6px; margin-bottom: 12px; }
