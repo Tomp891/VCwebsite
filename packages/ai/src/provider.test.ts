@@ -51,6 +51,50 @@ describe("createFallbackProvider", () => {
   });
 });
 
+describe("chatStream", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("mock provider streams the deterministic answer token-by-token", async () => {
+    const mock = createMockProvider();
+    const chunks: string[] = [];
+    const full = await mock.chatStream!("my prompt", (c) => chunks.push(c));
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.join("")).toBe(full);
+    expect(full).toBe(await mock.chat("my prompt"));
+  });
+
+  it("ollama provider parses newline-delimited JSON chunks", async () => {
+    const ndjson =
+      JSON.stringify({ response: "Hello" }) +
+      "\n" +
+      JSON.stringify({ response: " world" }) +
+      "\n" +
+      JSON.stringify({ response: "!", done: true }) +
+      "\n";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(ndjson, { status: 200 })),
+    );
+    const provider = createOllamaProvider({ chatModel: "llama3.1:8b" });
+    const chunks: string[] = [];
+    const full = await provider.chatStream!("q", (c) => chunks.push(c));
+    expect(chunks).toEqual(["Hello", " world", "!"]);
+    expect(full).toBe("Hello world!");
+  });
+
+  it("fallback streams via the mock when the primary throws", async () => {
+    const onFallback = vi.fn();
+    const p = createFallbackProvider(failing, createMockProvider(), onFallback);
+    const chunks: string[] = [];
+    const full = await p.chatStream!("q", (c) => chunks.push(c));
+    expect(chunks.join("")).toBe(full);
+    expect(full).toContain("[mock provider]");
+    expect(onFallback).toHaveBeenCalledWith("chat", expect.any(Error));
+  });
+});
+
 describe("createOllamaProvider embed", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

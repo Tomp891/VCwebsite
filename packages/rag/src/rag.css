@@ -65,6 +65,24 @@
   color: var(--rag-oxblood);
 }
 
+/* Live streaming answer buffer, shown while tokens arrive. */
+.rag-streaming {
+  background: var(--rag-parchment-2);
+  border: 1px solid var(--rag-line);
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin-top: 8px;
+}
+.rag-caret {
+  display: inline-block;
+  margin-left: 1px;
+  color: var(--rag-pencil);
+  animation: rag-blink 1s steps(2, start) infinite;
+}
+@keyframes rag-blink {
+  to { opacity: 0; }
+}
+
 .rag-answer {
   background: var(--rag-parchment-2);
   border: 1px solid var(--rag-line);

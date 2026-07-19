@@ -97,6 +97,7 @@ export function ChatPanel({
 }: ChatPanelProps): JSX.Element {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
+  const [streaming, setStreaming] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<ChatTurn[]>(loadHistory);
 
@@ -138,9 +139,15 @@ export function ChatPanel({
           recent.map((t) => t.question),
         );
         const ctx = await retriever.retrieve(retrievalQuery);
+        setStreaming("");
+        let acc = "";
         const ans = await answer(trimmed, ctx, provider, getOverview?.(), {
           history: recent,
           themes: getThemes?.(),
+          onToken: (chunk) => {
+            acc += chunk;
+            setStreaming(acc);
+          },
         });
         const byId = new Map(ctx.blocks.map((b) => [b.id, b]));
         const sources: StoredSource[] = ans.citations
@@ -162,6 +169,7 @@ export function ChatPanel({
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         setBusy(false);
+        setStreaming("");
       }
     },
     [retriever, provider, busy, onPath, getOverview, metaAnswer, getThemes, memoryTurns, history],
@@ -191,7 +199,15 @@ export function ChatPanel({
         </button>
       </form>
 
-      {busy && <div className="rag-status">Consulting the atlas…</div>}
+      {busy && !streaming && <div className="rag-status">Consulting the atlas…</div>}
+      {busy && streaming && (
+        <div className="rag-streaming">
+          <p className="rag-answer-text">
+            {streaming}
+            <span className="rag-caret" aria-hidden="true">▍</span>
+          </p>
+        </div>
+      )}
       {error && <div className="rag-status rag-error">{error}</div>}
 
       {history.length > 0 && (

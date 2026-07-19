@@ -80,15 +80,30 @@ export function createMockProvider(): AIProvider {
       return texts.map(hashEmbed);
     },
     async chat(prompt: string): Promise<string> {
-      const trimmed = prompt.trim();
-      const preview = trimmed.length > 600 ? `${trimmed.slice(0, 600)}…` : trimmed;
-      return [
-        "[mock provider] No live model is running, so here is the context I was given:",
-        "",
-        preview,
-      ].join("\n");
+      return mockAnswer(prompt);
+    },
+    async chatStream(prompt, onToken): Promise<string> {
+      // Simulate token streaming so the UI's streaming path is exercised without
+      // a live model: emit the deterministic mock answer word-by-word.
+      const full = mockAnswer(prompt);
+      const words = full.split(/(\s+)/);
+      for (const w of words) {
+        onToken(w);
+        await new Promise((r) => setTimeout(r, 8));
+      }
+      return full;
     },
   };
+}
+
+function mockAnswer(prompt: string): string {
+  const trimmed = prompt.trim();
+  const preview = trimmed.length > 600 ? `${trimmed.slice(0, 600)}…` : trimmed;
+  return [
+    "[mock provider] No live model is running, so here is the context I was given:",
+    "",
+    preview,
+  ].join("\n");
 }
 
 export interface OllamaOptions {
@@ -190,6 +205,16 @@ export function createFallbackProvider(
         return fallback.chat(prompt);
       }
     },
+    async chatStream(prompt, onToken): Promise<string> {
+      try {
+        if (primary.chatStream) return await primary.chatStream(prompt, onToken);
+        return await primary.chat(prompt);
+      } catch (err) {
+        onFallback?.("chat", err);
+        if (fallback.chatStream) return fallback.chatStream(prompt, onToken);
+        return fallback.chat(prompt);
+      }
+    },
   };
 }
 
@@ -242,6 +267,48 @@ export function createOllamaProvider(opts: OllamaOptions = {}): AIProvider {
       }
       const data = (await res.json()) as OllamaGenerateResponse;
       return data.response;
+    },
+    async chatStream(prompt, onToken): Promise<string> {
+      const res = await fetch(`${baseUrl}/api/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: chatModel, prompt, stream: true }),
+      });
+      if (!res.ok || !res.body) {
+        throw new Error(`Ollama chat failed: ${res.status} ${res.statusText}`);
+      }
+      // Ollama streams newline-delimited JSON objects, each with a `response`
+      // fragment and a final `{done:true}`. Decode incrementally and buffer
+      // partial lines across chunks.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let full = "";
+      const flushLine = (line: string): void => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        try {
+          const obj = JSON.parse(trimmed) as OllamaGenerateResponse;
+          if (obj.response) {
+            full += obj.response;
+            onToken(obj.response);
+          }
+        } catch {
+          /* ignore malformed partials */
+        }
+      };
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = buffer.indexOf("\n")) !== -1) {
+          flushLine(buffer.slice(0, nl));
+          buffer = buffer.slice(nl + 1);
+        }
+      }
+      flushLine(buffer);
+      return full;
     },
   };
 }

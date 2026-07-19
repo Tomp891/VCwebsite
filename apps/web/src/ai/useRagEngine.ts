@@ -18,7 +18,7 @@ import type {
   EmbeddingProvider,
   Ranker,
 } from "@atlas/contracts";
-import { createEmbeddingIndex } from "@atlas/embeddings";
+import { createEmbeddingIndex, createIndexedDBStore } from "@atlas/embeddings";
 import { createRanker } from "@atlas/ranking";
 import { LouvainClusterer } from "@atlas/clustering";
 import { createThemeNamer } from "@atlas/themes";
@@ -38,6 +38,11 @@ const MAX_NAMED_THEMES = 6;
 /** Stable id so the index cache invalidates when the embedding space changes. */
 function providerId(config: AiConfig): string {
   return config.engine === "ollama" ? `ollama:${config.embedModel}` : "mock-ai";
+}
+
+/** Reported vector width per embedding space (metadata; math tolerates any). */
+function providerDimensions(config: AiConfig): number {
+  return config.engine === "ollama" ? 768 : 576;
 }
 
 export function useRagEngine(
@@ -61,16 +66,21 @@ export function useRagEngine(
     let alive = true;
     const embedProvider: EmbeddingProvider = {
       id: key,
-      dimensions: 1,
+      dimensions: providerDimensions(config),
       embed: (texts) => provider.embed(texts),
     };
-    void createEmbeddingIndex({ provider: embedProvider }).then((idx) => {
+    // Persist vectors in IndexedDB, namespaced per embedding space, so the first
+    // question after a reload is instant (only changed blocks re-embed) instead
+    // of re-embedding the whole base. Falls back to memory when IDB is absent.
+    const store = createIndexedDBStore({ dbName: `atlas-embeddings:${key}` });
+    void createEmbeddingIndex({ provider: embedProvider, store }).then((idx) => {
       if (alive) setIndex(idx);
     });
     return () => {
       alive = false;
     };
-  }, [key, provider]);
+    // `config` only affects this via `key`/dimensions, both derived from it.
+  }, [key, provider, config]);
 
   // Sync + recompute clusters/themes on store mutations. A token guards against
   // out-of-order async completions, and a ref serialises overlapping runs.
