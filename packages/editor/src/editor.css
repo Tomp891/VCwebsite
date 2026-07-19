@@ -28,6 +28,21 @@
   overflow: auto;
 }
 
+/* Collapsed pages list: only the expand toggle remains on a narrow rail. */
+.atlas-editor:has(.atlas-pages.is-collapsed) {
+  grid-template-columns: 34px 1fr;
+}
+.atlas-pages.is-collapsed {
+  padding: 8px 4px;
+  overflow: hidden;
+}
+.atlas-pages.is-collapsed .atlas-section-head {
+  border-bottom: none;
+  justify-content: center;
+  padding-bottom: 0;
+  margin-bottom: 0;
+}
+
 .atlas-section-head {
   display: flex;
   align-items: center;

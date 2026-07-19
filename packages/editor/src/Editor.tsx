@@ -511,6 +511,12 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
   // Id of the block that should grab focus after the next render (e.g. the one
   // just created by pressing Enter).
   const [focusId, setFocusId] = useState<BlockId | null>(null);
+  const [pagesCollapsed, setPagesCollapsed] = useState(
+    () => localStorage.getItem("atlas.pages.collapsed") === "1",
+  );
+  useEffect(() => {
+    localStorage.setItem("atlas.pages.collapsed", pagesCollapsed ? "1" : "0");
+  }, [pagesCollapsed]);
 
   // Prefer the controlled `pageId` when it names a real page, else the last
   // internal selection, else the first page.
@@ -646,24 +652,36 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
 
   return (
     <div className="atlas-editor">
-      <aside className="atlas-pages">
+      <aside className={pagesCollapsed ? "atlas-pages is-collapsed" : "atlas-pages"}>
         <div className="atlas-section-head">
-          <span>Pages</span>
-          <button className="atlas-btn" onClick={newPage} title="New page">
-            +
+          {!pagesCollapsed && <span>Pages</span>}
+          <button
+            className="atlas-btn"
+            onClick={() => setPagesCollapsed((c) => !c)}
+            title={pagesCollapsed ? "Expand pages list" : "Collapse pages list"}
+            aria-label={pagesCollapsed ? "Expand pages list" : "Collapse pages list"}
+          >
+            {pagesCollapsed ? "»" : "«"}
           </button>
+          {!pagesCollapsed && (
+            <button className="atlas-btn" onClick={newPage} title="New page">
+              +
+            </button>
+          )}
         </div>
-        <ul className="atlas-page-list">
-          {pages.map((p) => (
-            <li
-              key={p.id}
-              className={p.id === currentId ? "is-active" : undefined}
-              onClick={() => open(p.id)}
-            >
-              {blockTitle(p) || "Untitled"}
-            </li>
-          ))}
-        </ul>
+        {!pagesCollapsed && (
+          <ul className="atlas-page-list">
+            {pages.map((p) => (
+              <li
+                key={p.id}
+                className={p.id === currentId ? "is-active" : undefined}
+                onClick={() => open(p.id)}
+              >
+                {blockTitle(p) || "Untitled"}
+              </li>
+            ))}
+          </ul>
+        )}
       </aside>
 
       <section className="atlas-doc">
