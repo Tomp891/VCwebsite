@@ -480,3 +480,28 @@ body {
   font-size: 11px;
   font-weight: 700;
 }
+
+/* AI tag write-back rows (pencil → ink), reusing the .atlas-ai skin. */
+.tagsug-note {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+.tagsug-note:hover { color: var(--verdigris, #3c6e5b); }
+.tagsug-tag {
+  font-weight: 700;
+  color: var(--verdigris, #3c6e5b);
+}
+.atlas-ai__row.is-pinned {
+  border-left: 2px solid var(--verdigris, #3c6e5b);
+  padding-left: 6px;
+}
+.tagsug-pin.is-active {
+  color: var(--verdigris, #3c6e5b);
+  font-weight: 700;
+}
