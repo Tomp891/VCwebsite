@@ -447,3 +447,79 @@ body {
   cursor: pointer;
 }
 .ai-engine-test:disabled { opacity: 0.6; cursor: default; }
+
+/* Guided local-AI (Ollama) setup. */
+.ai-setup {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--paper, #fff) 70%, transparent);
+}
+.ai-setup-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ai-setup-toggle {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--oxblood);
+  cursor: pointer;
+  font-family: var(--sans);
+  font-size: 12px;
+}
+.ai-setup-check {
+  margin-left: auto;
+  font-family: var(--sans);
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--verdigris, #3c6e5b);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--verdigris, #3c6e5b);
+  cursor: pointer;
+}
+.ai-setup-check:disabled { opacity: 0.6; cursor: default; }
+.ai-setup-steps {
+  margin: 6px 0 2px;
+  padding-left: 18px;
+  color: var(--ink);
+  line-height: 1.5;
+}
+div.ai-setup-steps { padding-left: 2px; }
+.ai-setup-steps li { margin-bottom: 4px; }
+.ai-setup-steps a { color: var(--oxblood); }
+.ai-setup-steps code,
+.ai-cmd code {
+  font-size: 11px;
+  background: color-mix(in srgb, var(--pencil, #9a8c73) 15%, transparent);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+.ai-setup-note { color: var(--pencil); margin-bottom: 4px; }
+.ai-cmd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.ai-cmd code {
+  flex: 1 1 auto;
+  overflow-x: auto;
+  white-space: nowrap;
+  padding: 3px 6px;
+}
+.ai-cmd-copy {
+  flex: 0 0 auto;
+  font-family: var(--sans);
+  font-size: 10px;
+  padding: 2px 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.ai-cmd-copy:hover { border-color: var(--verdigris, #3c6e5b); }
