@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { Block, BlockId, EditorStore } from "@atlas/contracts";
 import { blockTitle } from "./wikilinks.js";
@@ -33,14 +33,39 @@ interface BlockRowProps {
   onChange: (content: string) => void;
   /** Fired on blur with the final content (used to harvest #hashtags). */
   onCommit?: (content: string) => void;
-  onEnter: () => void;
+  /** Split at the caret: text before stays, text after seeds a new block. */
+  onEnter: (before: string, after: string) => void;
   onDelete: () => void;
+  /** Focus this row's textarea (caret at start) once, after it mounts. */
+  autoFocus?: boolean;
 }
 
-function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete }: BlockRowProps): JSX.Element {
+function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, autoFocus }: BlockRowProps): JSX.Element {
   const ref = useRef<HTMLTextAreaElement>(null);
+  // Bridges the async re-render gap between two rapid Enter presses: holds the
+  // value/caret we just produced so the next keydown reads it instead of the
+  // not-yet-committed DOM value.
+  const pending = useRef<{ value: string; caret: number } | null>(null);
   const [suggest, setSuggest] = useState<WikilinkMatch | null>(null);
   const [active, setActive] = useState(0);
+
+  useEffect(() => {
+    if (autoFocus && ref.current) {
+      ref.current.focus();
+      ref.current.setSelectionRange(0, 0);
+    }
+  }, [autoFocus]);
+
+  // Grow the textarea to fit its content so a bullet can hold multiple lines
+  // (one bullet per topic) instead of scrolling inside a single row. Runs
+  // before paint so a freshly typed line is never clipped or hidden.
+  const autoGrow = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+  useLayoutEffect(autoGrow, [autoGrow, block.content]);
 
   const matches = useMemo(() => {
     if (!suggest) return [];
@@ -92,7 +117,42 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete }: 
     }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      onEnter();
+      const el = e.currentTarget;
+      const src = pending.current ?? { value: el.value, caret: el.selectionStart ?? el.value.length };
+      const value = src.value;
+      const caret = src.caret;
+      const lineStart = value.lastIndexOf("\n", caret - 1) + 1;
+      const nl = value.indexOf("\n", caret);
+      const lineEnd = nl === -1 ? value.length : nl;
+      const currentLine = value.slice(lineStart, lineEnd);
+      // Double-Enter (Enter on an empty line) ends this bullet and starts a new
+      // one; a single Enter just adds a line inside the same bullet, so a topic
+      // stays in one bullet.
+      if (currentLine.trim() === "" && value.trim() !== "") {
+        pending.current = null;
+        const before = value.slice(0, lineStart).replace(/\n$/, "");
+        const after = value.slice(lineEnd);
+        onEnter(before, after);
+        return;
+      }
+      // Insert a newline within the bullet ourselves and place the caret after
+      // it, so the next keystroke (and a possible double-Enter) is reliable.
+      // Mutate the DOM synchronously (value, caret, height) so the new line is
+      // visible immediately; React's async re-render then commits the same
+      // value, which leaves the DOM (and caret) untouched.
+      const next = `${value.slice(0, caret)}\n${value.slice(caret)}`;
+      const pos = caret + 1;
+      el.value = next;
+      el.setSelectionRange(pos, pos);
+      autoGrow();
+      // Keep the just-added line on screen instead of forcing the user to
+      // scroll to find where the Enter went.
+      el.scrollIntoView({ block: "nearest" });
+      pending.current = { value: next, caret: pos };
+      onChange(next);
+      requestAnimationFrame(() => {
+        pending.current = null;
+      });
       return;
     }
     if (e.key === "Backspace" && block.content === "") {
@@ -112,11 +172,15 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete }: 
           rows={1}
           placeholder="Write a block… use [[ to link"
           onChange={(e) => {
+            pending.current = null;
             onChange(e.target.value);
             refresh(e.target);
           }}
           onKeyUp={(e) => refresh(e.currentTarget)}
-          onClick={(e) => refresh(e.currentTarget)}
+          onClick={(e) => {
+            pending.current = null;
+            refresh(e.currentTarget);
+          }}
           onBlur={(e) => {
             onCommit?.(e.currentTarget.value);
             setTimeout(() => setSuggest(null), 120);
@@ -212,6 +276,9 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
     [blocks],
   );
   const [selectedId, setSelectedId] = useState<BlockId | null>(null);
+  // Id of the block that should grab focus after the next render (e.g. the one
+  // just created by pressing Enter).
+  const [focusId, setFocusId] = useState<BlockId | null>(null);
 
   // Prefer the controlled `pageId` when it names a real page, else the last
   // internal selection, else the first page.
@@ -273,7 +340,37 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
 
   function newChild(): void {
     if (!currentId) return;
-    store.createBlock({ parentId: currentId, order: children.length, type: "text", content: "", props: {} });
+    const created = store.createBlock({ parentId: currentId, order: children.length, type: "text", content: "", props: {} });
+    setFocusId(created.id);
+  }
+
+  // Enter inside a block: keep `before` in the current block, push `after` into
+  // a new block right below it, then focus the new block.
+  function splitBlock(afterId: BlockId, before: string, after: string): void {
+    if (!currentId) return;
+    const idx = children.findIndex((c) => c.id === afterId);
+    if (idx === -1) return;
+    store.upsertBlock({ id: afterId, content: before });
+    // Make room: bump the order of every sibling below the split point.
+    for (const sib of children.slice(idx + 1)) {
+      store.upsertBlock({ id: sib.id, order: sib.order + 1 });
+    }
+    const created = store.createBlock({
+      parentId: currentId,
+      order: children[idx].order + 1,
+      type: "text",
+      content: after,
+      props: {},
+    });
+    setFocusId(created.id);
+  }
+
+  // Backspace on an empty block: delete it and focus the previous sibling.
+  function removeChild(id: BlockId): void {
+    const idx = children.findIndex((c) => c.id === id);
+    store.deleteBlock(id);
+    const prev = idx > 0 ? children[idx - 1] : null;
+    if (prev) setFocusId(prev.id);
   }
 
   const pageTags = current ? blockTagList(current.props) : [];
@@ -332,9 +429,19 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
               value={current.content}
               rows={1}
               placeholder="Page title"
-              onChange={(e) =>
-                store.upsertBlock({ id: current.id, content: e.target.value, props: { ...current.props, title: e.target.value } })
-              }
+              onChange={(e) => {
+                const title = e.target.value.replace(/\n+/g, " ");
+                store.upsertBlock({ id: current.id, content: title, props: { ...current.props, title } });
+              }}
+              onKeyDown={(e) => {
+                // The title is a single line: Enter jumps into the page body
+                // (first block, or a fresh one) instead of inserting a newline.
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (children.length > 0) setFocusId(children[0].id);
+                  else newChild();
+                }
+              }}
               onBlur={(e) => mergeHashtags(e.target.value)}
             />
             <TagEditor
@@ -348,10 +455,11 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
                   key={b.id}
                   block={b}
                   pageTitles={pageTitles}
+                  autoFocus={b.id === focusId}
                   onChange={(content) => store.upsertBlock({ id: b.id, content })}
                   onCommit={(content) => mergeHashtags(content)}
-                  onEnter={newChild}
-                  onDelete={() => store.deleteBlock(b.id)}
+                  onEnter={(before, after) => splitBlock(b.id, before, after)}
+                  onDelete={() => removeChild(b.id)}
                 />
               ))}
             </div>

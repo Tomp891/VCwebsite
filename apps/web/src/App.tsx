@@ -10,13 +10,24 @@ import {
 import type { ChangeEvent } from "react";
 import { createLocalStore, Editor } from "@atlas/editor";
 import { Graph2D } from "@atlas/graph";
-import { createMockProvider, SuggestionsPanel } from "@atlas/ai";
+import { SuggestionsPanel } from "@atlas/ai";
 import { DatabaseView, NavTree, allTags, blockTags } from "@atlas/db";
-import { ChatPanel, createRetriever } from "@atlas/rag";
+import {
+  ChatPanel,
+  createRetriever,
+  DEFAULT_TOP_K,
+  classifyScope,
+  type RetrieverOptions,
+} from "@atlas/rag";
+import type { EditorStore, Retriever } from "@atlas/contracts";
+import { useRagEngine } from "./ai/useRagEngine.js";
 import { storeToGraphData } from "./graphData.js";
 import { downloadExport, importFromJson } from "./persistence.js";
 import { LinksPanel } from "./LinksPanel.js";
 import { GraphPreview } from "./GraphPreview.js";
+import { EmergentPanel } from "./emergent/EmergentPanel.js";
+import { AiSettings } from "./ai/AiSettings.js";
+import { useAiProvider } from "./ai/useAiProvider.js";
 
 // 3D pulls in three.js + 3d-force-graph (~large). Load it only when the Atlas
 // mode is opened so the initial bundle stays small.
@@ -24,10 +35,8 @@ const Graph3D = lazy(() =>
   import("@atlas/graph3d").then((m) => ({ default: m.Graph3D })),
 );
 
-// Shared singletons — the ONE substrate every pane reads/writes.
+// Shared singleton — the ONE substrate every pane reads/writes.
 const store = createLocalStore();
-const provider = createMockProvider();
-const retriever = createRetriever(store, provider);
 
 // Human-readable names for the tag-derived graph clusters.
 const CLUSTER_LABELS: Record<number, string> = {
@@ -37,7 +46,33 @@ const CLUSTER_LABELS: Record<number, string> = {
 };
 
 type CenterTab = "page" | "database";
-type GraphMode = "2d" | "3d";
+type GraphMode = "2d" | "3d" | "emergent";
+
+// How wide a net the "Ask" retrieval casts, inferred from the question itself.
+const BROAD_TOP_K = 12;
+const TAG_SCOPE_CAP = 20;
+
+// Retrieval tuning shared across every Ask query (blended vector + lexical +
+// graph-importance, MMR-diversified, with confidence-gated 1-hop expansion).
+const RETRIEVER_TUNING = {
+  rankWeight: 0.25,
+  lexicalWeight: 0.35,
+  mmrLambda: 0.7,
+  minEdgeConfidence: 0.3,
+  maxNeighboursPerSeed: 3,
+} as const;
+
+/** An EditorStore view narrowed to a subset of block ids (for tag-scoped Ask). */
+function scopedStore(base: EditorStore, allow: Set<string>): EditorStore {
+  return {
+    ...base,
+    listBlocks: () => base.listBlocks().filter((b) => allow.has(b.id)),
+    listEdges: () =>
+      base
+        .listEdges()
+        .filter((e) => allow.has(e.srcBlockId) && allow.has(e.dstBlockId)),
+  };
+}
 
 export function App() {
   // Re-render on any store change so graph/nav/db stay in sync. We keep a
@@ -53,6 +88,127 @@ export function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeTags, setActiveTags] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // AI engine (local Ollama with mock fallback) shared by suggestions + Ask.
+  const ai = useAiProvider();
+  // Cached embedding index + graph ranker + clusters + theme summaries, kept
+  // warm and re-synced (only changed blocks re-embed) as the store mutates.
+  const rag = useRagEngine(ai.provider, ai.config, store.listBlocks(), version);
+  const ragRef = useRef(rag);
+  ragRef.current = rag;
+  // Adaptive-scope retrieval: the question decides how wide to look. Mentioning
+  // an existing tag scopes to those notes; an embedding-based intent classifier
+  // (paraphrase-aware, EN/NL) widens broad/overview questions and routes them
+  // across topic clusters; otherwise the default small top-K.
+  const retriever = useMemo<Retriever>(
+    () => ({
+      async retrieve(query: string) {
+        const { index, ranker, clusters } = ragRef.current;
+        const base: RetrieverOptions = { ...RETRIEVER_TUNING, index, ranker };
+        const q = query.toLowerCase();
+        const mentioned = allTags(store.listBlocks()).filter((t) =>
+          q.includes(t.toLowerCase()),
+        );
+        if (mentioned.length > 0) {
+          const active = new Set(mentioned);
+          const allow = new Set(
+            store
+              .listBlocks()
+              .filter((b) => blockTags(b).some((t) => active.has(t)))
+              .map((b) => b.id),
+          );
+          if (allow.size > 0) {
+            const k = Math.min(allow.size, TAG_SCOPE_CAP);
+            return createRetriever(scopedStore(store, allow), ai.provider, {
+              ...base,
+              topK: k,
+            }).retrieve(query);
+          }
+        }
+        const scope = await classifyScope(query, {
+          embed: (texts) => ai.provider.embed(texts),
+        });
+        const broad = scope === "broad";
+        const topK = broad
+          ? Math.min(store.listBlocks().length, BROAD_TOP_K)
+          : DEFAULT_TOP_K;
+        const routing =
+          broad && clusters ? { clusters, perClusterK: 2 } : {};
+        return createRetriever(store, ai.provider, {
+          ...base,
+          topK,
+          ...routing,
+        }).retrieve(query);
+      },
+    }),
+    [ai.provider],
+  );
+
+  // Compact meta-summary of the whole store, injected into each chat prompt so
+  // the model can answer questions about the database itself (counts, tags).
+  const getChatOverview = useCallback(() => {
+    const bs = store.listBlocks();
+    const es = store.listEdges();
+    const pages = bs.filter((b) => b.parentId === null).length;
+    const explicit = es.filter((e) => e.tier === "explicit").length;
+    const tags = allTags(bs);
+    return [
+      `Total notes/blocks: ${bs.length} (top-level pages: ${pages}).`,
+      `Total links: ${es.length} (${explicit} explicit/human, ${es.length - explicit} inferred).`,
+      `Tags (${tags.length}): ${tags.map((t) => `#${t}`).join(", ") || "none"}.`,
+    ].join("\n");
+  }, []);
+
+  // Deterministic answers for structural/meta questions ("how many notes?",
+  // "which tags?"). Counting is not something a small LLM does reliably, so we
+  // answer these straight from the store and skip the model entirely.
+  const answerMeta = useCallback((query: string): string | null => {
+    const q = query.toLowerCase();
+    const dutch = /\b(hoeveel|aantal|welke|notities|blokken|pagina|verbinding)/.test(q);
+    const bs = store.listBlocks();
+    const es = store.listEdges();
+    const pages = bs.filter((b) => b.parentId === null).length;
+    const tags = allTags(bs);
+
+    const asksCount = /\b(how many|how much|number of|count|total|hoeveel|aantal|totaal)\b/.test(q);
+    const mentions = (re: RegExp) => re.test(q);
+
+    // "which/what tags exist" or "list tags"
+    if (
+      mentions(/tags?\b/) &&
+      (mentions(/\b(which|what|list|welke|toon|noem)\b/) || (asksCount && mentions(/tags?/)))
+    ) {
+      if (asksCount && !mentions(/\b(which|what|welke|list|toon|noem)\b/)) {
+        return dutch
+          ? `Je database bevat ${tags.length} tags.`
+          : `Your database has ${tags.length} tags.`;
+      }
+      const list = tags.map((t) => `#${t}`).join(", ") || (dutch ? "geen" : "none");
+      return dutch
+        ? `Er zijn ${tags.length} tags: ${list}.`
+        : `There are ${tags.length} tags: ${list}.`;
+    }
+
+    if (asksCount && mentions(/\b(links?|edges?|verbinding|connectie|relatie)/)) {
+      return dutch
+        ? `Er zijn ${es.length} links (verbindingen) in je database.`
+        : `Your database has ${es.length} links (edges).`;
+    }
+
+    if (asksCount && mentions(/\b(notes?|notities|blokken|blocks|pagina|pages?)\b/)) {
+      const pageWord = mentions(/\b(pagina|pages?)\b/) && !mentions(/\b(notes?|notities|blokken|blocks)\b/);
+      if (pageWord) {
+        return dutch
+          ? `Je database bevat ${pages} pagina's.`
+          : `Your database has ${pages} pages.`;
+      }
+      return dutch
+        ? `Je database bevat ${bs.length} notes/blokken (waarvan ${pages} top-level pagina's).`
+        : `Your database has ${bs.length} notes/blocks (${pages} of them top-level pages).`;
+    }
+
+    return null;
+  }, []);
 
   const toggleTag = useCallback((tag: string) => {
     setActiveTags((cur) =>
@@ -81,9 +237,10 @@ export function App() {
     return () => document.removeEventListener("keydown", onKey);
   }, [isFullscreen]);
 
+  const blocks = useMemo(() => store.listBlocks(), [version]);
   const graphData = useMemo(
-    () => storeToGraphData(store.listBlocks(), store.listEdges()),
-    [version],
+    () => storeToGraphData(blocks, store.listEdges()),
+    [blocks],
   );
 
   // Every tag in the store + a lookup of tags per block, for filtering.
@@ -212,6 +369,13 @@ export function App() {
               3D Atlas
             </button>
             <button
+              className={graphMode === "emergent" ? "seg-btn active" : "seg-btn"}
+              onClick={() => setGraphMode("emergent")}
+              title="Emergent themes — hulls, ranking and temporal playback"
+            >
+              Emergent
+            </button>
+            <button
               className="seg-btn"
               onClick={toggleFullscreen}
               title={isFullscreen ? "Exit fullscreen" : "View graph fullscreen"}
@@ -222,7 +386,7 @@ export function App() {
           </div>
         </div>
         <div className={isFullscreen ? "graph-frame is-fullscreen" : "graph-frame"}>
-          {allTagList.length > 0 && (
+          {graphMode !== "emergent" && allTagList.length > 0 && (
             <div className="graph-filter" role="group" aria-label="Filter graph by tag">
               {allTagList.map((t) => (
                 <button
@@ -247,17 +411,26 @@ export function App() {
               )}
             </div>
           )}
-          {graphMode === "2d" ? (
+          {graphMode === "2d" && (
             <Graph2D
               data={filteredGraphData}
               selectedId={selectedId}
               onSelect={setSelectedId}
               clusterLabels={CLUSTER_LABELS}
             />
-          ) : (
+          )}
+          {graphMode === "3d" && (
             <Suspense fallback={<div className="graph-loading">Unfolding the atlas…</div>}>
               <Graph3D data={filteredGraphData} selectedId={selectedId} onSelect={setSelectedId} />
             </Suspense>
+          )}
+          {graphMode === "emergent" && (
+            <EmergentPanel
+              blocks={blocks}
+              version={version}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
           )}
           {selectedPageId && (
             <GraphPreview
@@ -282,7 +455,7 @@ export function App() {
         <h2 className="pane-title" style={{ marginTop: 20 }}>
           Suggestions
         </h2>
-        <SuggestionsPanel store={store} provider={provider} />
+        <SuggestionsPanel store={store} provider={ai.provider} />
 
         <h2 className="pane-title" style={{ marginTop: 20 }}>
           Inked links
@@ -292,7 +465,16 @@ export function App() {
         <h2 className="pane-title" style={{ marginTop: 20 }}>
           Ask
         </h2>
-        <ChatPanel retriever={retriever} provider={provider} onPath={setPath} />
+        <AiSettings state={ai} />
+        <ChatPanel
+          retriever={retriever}
+          provider={ai.provider}
+          onPath={setPath}
+          onSelect={setSelectedId}
+          getOverview={getChatOverview}
+          metaAnswer={answerMeta}
+          getThemes={() => ragRef.current.themeSummaries}
+        />
       </aside>
     </div>
   );
