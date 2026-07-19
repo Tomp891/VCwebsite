@@ -429,9 +429,19 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
               value={current.content}
               rows={1}
               placeholder="Page title"
-              onChange={(e) =>
-                store.upsertBlock({ id: current.id, content: e.target.value, props: { ...current.props, title: e.target.value } })
-              }
+              onChange={(e) => {
+                const title = e.target.value.replace(/\n+/g, " ");
+                store.upsertBlock({ id: current.id, content: title, props: { ...current.props, title } });
+              }}
+              onKeyDown={(e) => {
+                // The title is a single line: Enter jumps into the page body
+                // (first block, or a fresh one) instead of inserting a newline.
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (children.length > 0) setFocusId(children[0].id);
+                  else newChild();
+                }
+              }}
               onBlur={(e) => mergeHashtags(e.target.value)}
             />
             <TagEditor
