@@ -29,6 +29,40 @@ body {
   height: 100%;
   min-height: 0;
 }
+.app-shell.nav-collapsed {
+  grid-template-columns: 34px 1fr 380px;
+}
+
+/* Collapse/expand toggle for the left navigation pane. */
+.nav-toggle {
+  position: absolute;
+  top: 10px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--parchment);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.nav-toggle:hover {
+  background: var(--parchment-2);
+}
+.pane-nav {
+  position: relative;
+}
+.pane-nav.is-collapsed {
+  padding: 8px 4px;
+  overflow: hidden;
+}
+.pane-nav.is-collapsed .nav-toggle {
+  right: 50%;
+  transform: translateX(50%);
+}
 
 .pane {
   min-height: 0;

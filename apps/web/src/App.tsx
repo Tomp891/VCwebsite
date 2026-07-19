@@ -86,6 +86,12 @@ export function App() {
   const [centerTab, setCenterTab] = useState<CenterTab>("page");
   const [graphMode, setGraphMode] = useState<GraphMode>("2d");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [navCollapsed, setNavCollapsed] = useState(
+    () => localStorage.getItem("atlas.nav.collapsed") === "1",
+  );
+  useEffect(() => {
+    localStorage.setItem("atlas.nav.collapsed", navCollapsed ? "1" : "0");
+  }, [navCollapsed]);
   const [activeTags, setActiveTags] = useState<string[]>([]);
 
   // AI engine (local Ollama with mock fallback) shared by suggestions + Ask.
@@ -290,8 +296,19 @@ export function App() {
   }, [path]);
 
   return (
-    <div className="app-shell">
-      <aside className="pane pane-nav">
+    <div className={navCollapsed ? "app-shell nav-collapsed" : "app-shell"}>
+      <aside className={navCollapsed ? "pane pane-nav is-collapsed" : "pane pane-nav"}>
+        <button
+          type="button"
+          className="nav-toggle"
+          onClick={() => setNavCollapsed((c) => !c)}
+          title={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {navCollapsed ? "»" : "«"}
+        </button>
+        {!navCollapsed && (
+          <>
         <h1 className="brand">Atlas</h1>
         <div className="brand-sub">a cartography of thought</div>
         <NavTree
@@ -303,6 +320,8 @@ export function App() {
         />
 
         <DataSafety store={store} version={version} />
+          </>
+        )}
       </aside>
 
       <main className="pane pane-editor">
