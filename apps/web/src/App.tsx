@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ChangeEvent } from "react";
 import { createLocalStore, Editor } from "@atlas/editor";
 import { Graph2D } from "@atlas/graph";
 import { SuggestionsPanel } from "@atlas/ai";
@@ -22,7 +21,7 @@ import {
 import type { EditorStore, Retriever } from "@atlas/contracts";
 import { useRagEngine } from "./ai/useRagEngine.js";
 import { storeToGraphData } from "./graphData.js";
-import { downloadExport, importFromJson } from "./persistence.js";
+import { DataSafety } from "./DataSafety.js";
 import { LinksPanel } from "./LinksPanel.js";
 import { GraphPreview } from "./GraphPreview.js";
 import { EmergentPanel } from "./emergent/EmergentPanel.js";
@@ -87,7 +86,6 @@ export function App() {
   const [graphMode, setGraphMode] = useState<GraphMode>("2d");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [activeTags, setActiveTags] = useState<string[]>([]);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   // AI engine (local Ollama with mock fallback) shared by suggestions + Ask.
   const ai = useAiProvider();
@@ -290,16 +288,6 @@ export function App() {
     if (path.length > 0) setSelectedId(path[0]);
   }, [path]);
 
-  const onImportFile = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    file
-      .text()
-      .then(importFromJson)
-      .catch((err) => alert(`Import failed: ${err instanceof Error ? err.message : String(err)}`));
-    e.target.value = "";
-  }, []);
-
   return (
     <div className="app-shell">
       <aside className="pane pane-nav">
@@ -313,21 +301,7 @@ export function App() {
           onTagToggle={toggleTag}
         />
 
-        <div className="io-bar">
-          <button className="io-btn" onClick={() => downloadExport(store)} title="Download all notes as JSON">
-            Export
-          </button>
-          <button className="io-btn" onClick={() => fileRef.current?.click()} title="Replace notes from a JSON file">
-            Import
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/json,.json"
-            style={{ display: "none" }}
-            onChange={onImportFile}
-          />
-        </div>
+        <DataSafety store={store} version={version} />
       </aside>
 
       <main className="pane pane-editor">

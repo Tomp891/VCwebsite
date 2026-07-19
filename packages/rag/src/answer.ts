@@ -25,6 +25,8 @@ export interface PromptOptions {
   maxCharsPerSource?: number;
   /** how many blocks to cite when the model emits no explicit [id]. */
   fallbackCitations?: number;
+  /** if set (and the provider supports streaming), receives incremental text. */
+  onToken?: (chunk: string) => void;
 }
 
 const DEFAULT_MAX_CHARS_PER_SOURCE = 800;
@@ -103,7 +105,10 @@ export async function answer(
   opts: PromptOptions = {},
 ): Promise<ChatAnswer> {
   const prompt = buildPrompt(query, ctx, overview, opts);
-  const text = await provider.chat(prompt);
+  const text =
+    opts.onToken && provider.chatStream
+      ? await provider.chatStream(prompt, opts.onToken)
+      : await provider.chat(prompt);
   const knownIds = ctx.blocks.map((b) => b.id);
   const citations = extractCitations(text, knownIds);
   // Fall back to the top few retrieved blocks (path is importance-ordered) if

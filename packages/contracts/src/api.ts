@@ -49,6 +49,12 @@ export interface GraphData {
 export interface AIProvider {
   embed(texts: string[]): Promise<number[][]>;
   chat(prompt: string): Promise<string>;
+  /**
+   * Optional streaming chat: invokes `onToken` with each incremental chunk as it
+   * arrives and resolves with the full text. Consumers must fall back to `chat`
+   * when a provider does not implement it.
+   */
+  chatStream?(prompt: string, onToken: (chunk: string) => void): Promise<string>;
 }
 
 /** A single AI edge suggestion awaiting accept/reject. */
