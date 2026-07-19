@@ -447,6 +447,7 @@ export function App() {
             <EmergentPanel
               blocks={blocks}
               version={version}
+              index={rag.index}
               selectedId={selectedId}
               onSelect={setSelectedId}
             />
