@@ -165,6 +165,40 @@
   padding: 2px 0;
 }
 
+/* Outliner block kinds (markdown shortcuts: # heading, > quote, [] todo). */
+.atlas-block-row--heading .atlas-block-input {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.atlas-bullet--heading {
+  color: var(--pencil);
+  font-size: 18px;
+  line-height: 1.35;
+}
+.atlas-block-row--quote {
+  border-left: 3px solid var(--line);
+  padding-left: 6px;
+}
+.atlas-block-row--quote .atlas-block-input {
+  font-style: italic;
+  color: var(--ink-soft);
+}
+.atlas-bullet--quote {
+  color: transparent;
+  width: 0;
+}
+.atlas-todo-check {
+  margin-top: 6px;
+  accent-color: var(--verdigris, #3c6e5b);
+  cursor: pointer;
+}
+.atlas-block-row.is-done .atlas-block-input {
+  text-decoration: line-through;
+  color: var(--pencil);
+}
+
 .atlas-autocomplete {
   position: absolute;
   z-index: 20;
