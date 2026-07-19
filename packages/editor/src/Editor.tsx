@@ -81,6 +81,12 @@ function toggleBold(
   };
 }
 
+/** Heading level (1–3) when the block starts with `# `, `## ` or `### `. */
+function headingLevel(content: string): 0 | 1 | 2 | 3 {
+  const m = /^(#{1,3})\s/.exec(content);
+  return m ? (m[1].length as 1 | 2 | 3) : 0;
+}
+
 /** Outline depth of a block, stored in its props. */
 function blockIndent(block: Block): number {
   const raw = block.props["indent"];
@@ -115,7 +121,9 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, on
   // edited; clicking it (or being auto-focused) swaps back to the textarea.
   const [editing, setEditing] = useState(Boolean(autoFocus));
   const hasBold = /\*\*[^*\n][^*]*?\*\*/.test(block.content);
-  const showRendered = hasBold && !editing;
+  const heading = headingLevel(block.content);
+  const showRendered = (hasBold || heading > 0) && !editing;
+  const headingClass = heading > 0 ? ` atlas-h${heading}` : "";
 
   useEffect(() => {
     if (editing && !showRendered && ref.current && document.activeElement !== ref.current) {
@@ -262,11 +270,11 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, on
         <span className="atlas-bullet">•</span>
         <div className="atlas-block-field">
           <div
-            className="atlas-block-rendered"
+            className={`atlas-block-rendered${headingClass}`}
             title="Click to edit"
             onClick={() => setEditing(true)}
           >
-            {renderInline(block.content)}
+            {renderInline(heading > 0 ? block.content.slice(heading + 1) : block.content)}
           </div>
         </div>
       </div>
@@ -279,7 +287,7 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, on
       <div className="atlas-block-field">
         <textarea
           ref={ref}
-          className="atlas-block-input"
+          className={`atlas-block-input${headingClass}`}
           value={block.content}
           rows={1}
           placeholder="Write a block… use [[ to link"

@@ -179,6 +179,26 @@
   font-weight: 700;
 }
 
+/* Heading blocks: `# `, `## `, `### ` prefixes. Sizes apply while editing too. */
+.atlas-block-input.atlas-h1,
+.atlas-block-rendered.atlas-h1 {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+.atlas-block-input.atlas-h2,
+.atlas-block-rendered.atlas-h2 {
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.atlas-block-input.atlas-h3,
+.atlas-block-rendered.atlas-h3 {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .atlas-autocomplete {
   position: absolute;
   z-index: 20;
