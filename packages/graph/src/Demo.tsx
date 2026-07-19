@@ -13,6 +13,7 @@ export function Demo(): JSX.Element {
       <Graph2D
         data={data}
         selectedId={selectedId}
+        clusterLabels={{ 0: "Graph", 1: "AI", 2: "Architecture" }}
         onSelect={(id) =>
           setSelectedId((prev) => (prev === id ? undefined : id))
         }
