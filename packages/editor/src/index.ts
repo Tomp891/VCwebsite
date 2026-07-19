@@ -5,3 +5,11 @@ export { Demo } from "./Demo.js";
 export { parseWikilinks, resolveWikilink, blockTitle } from "./wikilinks.js";
 export { extractHashtags, blockTagList, normalizeTag, unionTags } from "./tags.js";
 export { STORAGE_KEYS } from "./storageKeys.js";
+export {
+  JOURNAL_TAG,
+  dailyNoteDateKey,
+  dailyNoteTitle,
+  getOrCreateDailyNote,
+  isDailyNote,
+  listDailyNotes,
+} from "./dailyNotes.js";

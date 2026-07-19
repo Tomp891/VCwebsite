@@ -22,6 +22,8 @@ export interface NavTreeProps {
   activeTags?: string[];
   /** Toggle a tag on/off; when provided, tags render as filter buttons. */
   onTagToggle?: (tag: string) => void;
+  /** Page ids to omit from the Pages list (e.g. shown elsewhere in the nav). */
+  excludeIds?: string[];
 }
 
 function pageLabel(block: Block): string {
@@ -48,13 +50,17 @@ const DEFAULT_QUERIES: SavedQuery[] = [
  * Left-nav over the same blocks: root pages, the tag index, and 1-2 example
  * saved queries. Clicking a page (or a query result) calls `onOpen(id)`.
  */
-export function NavTree({ store, onOpen, activeId: controlledActiveId, savedQueries = DEFAULT_QUERIES, activeTags = [], onTagToggle }: NavTreeProps): JSX.Element {
+export function NavTree({ store, onOpen, activeId: controlledActiveId, savedQueries = DEFAULT_QUERIES, activeTags = [], onTagToggle, excludeIds }: NavTreeProps): JSX.Element {
   const blocks = useBlocks(store);
   const [localActiveId, setActiveId] = useState<string | null>(null);
   const activeId = controlledActiveId ?? localActiveId;
   const [openQuery, setOpenQuery] = useState<string | null>(null);
 
-  const pages = useMemo(() => blocks.filter((b) => b.parentId === null), [blocks]);
+  const excluded = useMemo(() => new Set(excludeIds ?? []), [excludeIds]);
+  const pages = useMemo(
+    () => blocks.filter((b) => b.parentId === null && !excluded.has(b.id)),
+    [blocks, excluded],
+  );
   // Tags ranked by backlinks (most-referenced first), then block count.
   const tagStats = useMemo(() => rankedTags(blocks, store.listEdges()), [blocks, store]);
 

@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { createLocalStore, Editor } from "@atlas/editor";
+import { createLocalStore, Editor, listDailyNotes } from "@atlas/editor";
 import { Graph2D } from "@atlas/graph";
 import { SuggestionsPanel } from "@atlas/ai";
 import { DatabaseView, NavTree, allTags, blockTags } from "@atlas/db";
@@ -28,6 +28,7 @@ import { TagSuggestionsPanel } from "./TagSuggestionsPanel.js";
 import { EmergentPanel } from "./emergent/EmergentPanel.js";
 import { AiSettings } from "./ai/AiSettings.js";
 import { SearchOverlay } from "./SearchOverlay.js";
+import { JournalNav, JOURNAL_NAV_CAP } from "./JournalNav.js";
 import { useAiProvider } from "./ai/useAiProvider.js";
 
 // 3D pulls in three.js + 3d-force-graph (~large). Load it only when the Atlas
@@ -257,6 +258,13 @@ export function App() {
   }, [isFullscreen]);
 
   const blocks = useMemo(() => store.listBlocks(), [version]);
+  // Recent daily notes get their own nav section; hide them from Pages so the
+  // list isn't flooded (older ones remain reachable via Pages).
+  const journalNotes = useMemo(
+    () => listDailyNotes(blocks).slice(0, JOURNAL_NAV_CAP),
+    [blocks],
+  );
+  const journalIds = useMemo(() => journalNotes.map((n) => n.id), [journalNotes]);
   const graphData = useMemo(
     () => storeToGraphData(blocks, store.listEdges()),
     [blocks],
@@ -334,12 +342,19 @@ export function App() {
           <span>Search…</span>
           <kbd className="search-kbd">⌘K</kbd>
         </button>
+        <JournalNav
+          store={store}
+          notes={journalNotes}
+          activeId={selectedPageId}
+          onOpen={setSelectedId}
+        />
         <NavTree
           store={store}
           activeId={selectedPageId}
           onOpen={setSelectedId}
           activeTags={activeTags}
           onTagToggle={toggleTag}
+          excludeIds={journalIds}
         />
 
         <DataSafety store={store} version={version} />
