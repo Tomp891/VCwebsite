@@ -81,6 +81,12 @@ function toggleBold(
   };
 }
 
+/** Outline depth of a block, stored in its props. */
+function blockIndent(block: Block): number {
+  const raw = block.props["indent"];
+  return typeof raw === "number" && raw > 0 ? Math.floor(raw) : 0;
+}
+
 interface BlockRowProps {
   block: Block;
   pageTitles: string[];
@@ -90,11 +96,14 @@ interface BlockRowProps {
   /** Split at the caret: text before stays, text after seeds a new block. */
   onEnter: (before: string, after: string) => void;
   onDelete: () => void;
+  /** Tab / Shift+Tab: nest the bullet one level deeper (+1) or shallower (-1). */
+  onIndent: (delta: 1 | -1) => void;
   /** Focus this row's textarea (caret at start) once, after it mounts. */
   autoFocus?: boolean;
 }
 
-function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, autoFocus }: BlockRowProps): JSX.Element {
+function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, onIndent, autoFocus }: BlockRowProps): JSX.Element {
+  const indent = blockIndent(block);
   const ref = useRef<HTMLTextAreaElement>(null);
   // Bridges the async re-render gap between two rapid Enter presses: holds the
   // value/caret we just produced so the next keydown reads it instead of the
@@ -223,6 +232,11 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, au
       });
       return;
     }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      onIndent(e.shiftKey ? -1 : 1);
+      return;
+    }
     if (e.key === "b" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       const el = e.currentTarget;
@@ -240,9 +254,11 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, au
     }
   }
 
+  const indentStyle = indent > 0 ? { marginLeft: indent * 24 } : undefined;
+
   if (showRendered) {
     return (
-      <div className="atlas-block-row">
+      <div className="atlas-block-row" style={indentStyle}>
         <span className="atlas-bullet">•</span>
         <div className="atlas-block-field">
           <div
@@ -258,7 +274,7 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, au
   }
 
   return (
-    <div className="atlas-block-row">
+    <div className="atlas-block-row" style={indentStyle}>
       <span className="atlas-bullet">•</span>
       <div className="atlas-block-field">
         <textarea
@@ -458,9 +474,22 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
       order: children[idx].order + 1,
       type: "text",
       content: after,
-      props: {},
+      // A block created by splitting stays at the same outline depth.
+      props: blockIndent(children[idx]) > 0 ? { indent: blockIndent(children[idx]) } : {},
     });
     setFocusId(created.id);
+  }
+
+  // Tab / Shift+Tab: change a bullet's outline depth. A bullet can nest at
+  // most one level deeper than the bullet above it.
+  function indentBlock(id: BlockId, delta: 1 | -1): void {
+    const idx = children.findIndex((c) => c.id === id);
+    if (idx === -1) return;
+    const cur = blockIndent(children[idx]);
+    const maxDepth = idx > 0 ? blockIndent(children[idx - 1]) + 1 : 0;
+    const next = Math.max(0, Math.min(cur + delta, maxDepth));
+    if (next === cur) return;
+    store.upsertBlock({ id, props: { ...children[idx].props, indent: next } });
   }
 
   // Backspace on an empty block: delete it and focus the previous sibling.
@@ -558,6 +587,7 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
                   onCommit={(content) => mergeHashtags(content)}
                   onEnter={(before, after) => splitBlock(b.id, before, after)}
                   onDelete={() => removeChild(b.id)}
+                  onIndent={(delta) => indentBlock(b.id, delta)}
                 />
               ))}
             </div>
