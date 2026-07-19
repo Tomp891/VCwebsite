@@ -115,6 +115,56 @@ export function AiSettings({ state }: { state: AiState }): JSX.Element {
               )}
             </>
           )}
+
+          <div className="ai-deep">
+            <div className="ai-deep-title">Deep answer (optional, BYO key)</div>
+            <label className="ai-field">
+              <span>Provider</span>
+              <select
+                value={config.deepEngine}
+                onChange={(e) =>
+                  setConfig({ deepEngine: e.target.value as typeof config.deepEngine })
+                }
+              >
+                <option value="none">Off (local only)</option>
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="openai">OpenAI (GPT)</option>
+              </select>
+            </label>
+            {config.deepEngine !== "none" && (
+              <>
+                <label className="ai-field">
+                  <span>Model</span>
+                  <input
+                    type="text"
+                    value={config.deepModel}
+                    onChange={(e) => setConfig({ deepModel: e.target.value })}
+                    placeholder={
+                      config.deepEngine === "anthropic"
+                        ? "claude-3-5-sonnet-latest"
+                        : "gpt-4o"
+                    }
+                  />
+                </label>
+                <label className="ai-field">
+                  <span>API key</span>
+                  <input
+                    type="password"
+                    value={config.deepApiKey}
+                    onChange={(e) => setConfig({ deepApiKey: e.target.value })}
+                    placeholder="stored locally in this browser"
+                    autoComplete="off"
+                  />
+                </label>
+                <div className="ai-engine-sub">
+                  Your key stays in this browser and is sent only to{" "}
+                  {config.deepEngine === "anthropic" ? "Anthropic" : "OpenAI"} when
+                  you click “Deep answer”. Notes stay local; only retrieved context
+                  is sent.
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -2,19 +2,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AIProvider } from "@atlas/contracts";
 import {
   createFallbackProvider,
+  createFrontierProvider,
   createMockProvider,
   createOllamaProvider,
   probeOllama,
+  type FrontierEngine,
   type OllamaProbe,
 } from "@atlas/ai";
 
 export type AiEngine = "mock" | "ollama";
+export type DeepEngine = "none" | FrontierEngine;
 
 export interface AiConfig {
   engine: AiEngine;
   baseUrl: string;
   chatModel: string;
   embedModel: string;
+  /** Opt-in frontier "deep answer": stays local-first; key never leaves the browser. */
+  deepEngine: DeepEngine;
+  deepModel: string;
+  deepApiKey: string;
 }
 
 export const DEFAULT_AI_CONFIG: AiConfig = {
@@ -22,6 +29,9 @@ export const DEFAULT_AI_CONFIG: AiConfig = {
   baseUrl: "http://localhost:11434",
   chatModel: "llama3.1:8b",
   embedModel: "nomic-embed-text",
+  deepEngine: "none",
+  deepModel: "claude-3-5-sonnet-latest",
+  deepApiKey: "",
 };
 
 const STORAGE_KEY = "atlas.ai.config";
@@ -41,6 +51,8 @@ export interface AiState {
   config: AiConfig;
   setConfig: (patch: Partial<AiConfig>) => void;
   provider: AIProvider;
+  /** opt-in frontier provider for "deep answer", or null when not configured. */
+  deepProvider: AIProvider | null;
   /** latest Ollama probe result, or null before the first probe. */
   probe: OllamaProbe | null;
   probing: boolean;
@@ -106,5 +118,13 @@ export function useAiProvider(): AiState {
     return createFallbackProvider(ollama, mock, () => setFellBack(true));
   }, [config.engine, config.baseUrl, config.chatModel, config.embedModel]);
 
-  return { config, setConfig, provider, probe, probing, refresh, fellBack };
+  const deepProvider = useMemo<AIProvider | null>(() => {
+    if (config.deepEngine === "none" || !config.deepApiKey.trim()) return null;
+    return createFrontierProvider(config.deepEngine, {
+      apiKey: config.deepApiKey.trim(),
+      model: config.deepModel,
+    });
+  }, [config.deepEngine, config.deepApiKey, config.deepModel]);
+
+  return { config, setConfig, provider, deepProvider, probe, probing, refresh, fellBack };
 }

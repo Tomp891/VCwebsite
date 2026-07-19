@@ -443,6 +443,7 @@ export function App() {
         <ChatPanel
           retriever={retriever}
           provider={ai.provider}
+          deepProvider={ai.deepProvider}
           onPath={setPath}
           onSelect={setSelectedId}
           getOverview={getChatOverview}

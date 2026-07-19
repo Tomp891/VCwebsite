@@ -56,6 +56,36 @@
   cursor: default;
 }
 
+.rag-deep {
+  padding: 8px 12px;
+  background: var(--rag-parchment);
+  color: var(--rag-verdigris);
+  border: 1px solid var(--rag-verdigris);
+  border-radius: 6px;
+  font-family: var(--rag-serif);
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rag-deep:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.rag-deep-badge {
+  margin-left: 6px;
+  padding: 0 6px;
+  border: 1px solid var(--rag-verdigris);
+  border-radius: 999px;
+  font-family: var(--rag-serif);
+  font-variant: small-caps;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--rag-verdigris);
+}
+
 .rag-status {
   font-family: var(--rag-serif);
   font-style: italic;
