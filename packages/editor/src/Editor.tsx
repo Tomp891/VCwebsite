@@ -27,6 +27,60 @@ function activeWikilink(value: string, caret: number): WikilinkMatch | null {
   return { query: between, start: open + 2 };
 }
 
+/** Render inline markdown bold: `**text**` becomes <strong>text</strong>. */
+function renderInline(content: string): Array<JSX.Element | string> {
+  const out: Array<JSX.Element | string> = [];
+  const re = /\*\*([^*\n][^*]*?)\*\*/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let key = 0;
+  while ((m = re.exec(content)) !== null) {
+    if (m.index > last) out.push(content.slice(last, m.index));
+    out.push(<strong key={key++}>{m[1]}</strong>);
+    last = m.index + m[0].length;
+  }
+  if (last < content.length) out.push(content.slice(last));
+  return out;
+}
+
+/** Wrap the selection (or the word at the caret) in `**`, or unwrap it. */
+function toggleBold(
+  value: string,
+  selStart: number,
+  selEnd: number,
+): { value: string; selStart: number; selEnd: number } {
+  let start = selStart;
+  let end = selEnd;
+  if (start === end) {
+    // No selection: use the word around the caret.
+    while (start > 0 && !/\s/.test(value[start - 1])) start--;
+    while (end < value.length && !/\s/.test(value[end])) end++;
+  }
+  const before = value.slice(0, start);
+  const inner = value.slice(start, end);
+  const after = value.slice(end);
+  if (before.endsWith("**") && after.startsWith("**")) {
+    // Already bold: unwrap.
+    return {
+      value: `${before.slice(0, -2)}${inner}${after.slice(2)}`,
+      selStart: start - 2,
+      selEnd: end - 2,
+    };
+  }
+  if (inner.startsWith("**") && inner.endsWith("**") && inner.length >= 4) {
+    return {
+      value: `${before}${inner.slice(2, -2)}${after}`,
+      selStart: start,
+      selEnd: end - 4,
+    };
+  }
+  return {
+    value: `${before}**${inner}**${after}`,
+    selStart: start + 2,
+    selEnd: end + 2,
+  };
+}
+
 interface BlockRowProps {
   block: Block;
   pageTitles: string[];
@@ -48,8 +102,22 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, au
   const pending = useRef<{ value: string; caret: number } | null>(null);
   const [suggest, setSuggest] = useState<WikilinkMatch | null>(null);
   const [active, setActive] = useState(0);
+  // Blocks containing **bold** markup show a rendered view while not being
+  // edited; clicking it (or being auto-focused) swaps back to the textarea.
+  const [editing, setEditing] = useState(Boolean(autoFocus));
+  const hasBold = /\*\*[^*\n][^*]*?\*\*/.test(block.content);
+  const showRendered = hasBold && !editing;
 
   useEffect(() => {
+    if (editing && !showRendered && ref.current && document.activeElement !== ref.current) {
+      ref.current.focus();
+      const end = block.content.length;
+      ref.current.setSelectionRange(end, end);
+    }
+  }, [editing, showRendered, block.content]);
+
+  useEffect(() => {
+    if (autoFocus) setEditing(true);
     if (autoFocus && ref.current) {
       ref.current.focus();
       ref.current.setSelectionRange(0, 0);
@@ -155,10 +223,38 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, au
       });
       return;
     }
+    if (e.key === "b" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      const el = e.currentTarget;
+      const res = toggleBold(el.value, el.selectionStart ?? 0, el.selectionEnd ?? 0);
+      el.value = res.value;
+      el.setSelectionRange(res.selStart, res.selEnd);
+      autoGrow();
+      pending.current = null;
+      onChange(res.value);
+      return;
+    }
     if (e.key === "Backspace" && block.content === "") {
       e.preventDefault();
       onDelete();
     }
+  }
+
+  if (showRendered) {
+    return (
+      <div className="atlas-block-row">
+        <span className="atlas-bullet">•</span>
+        <div className="atlas-block-field">
+          <div
+            className="atlas-block-rendered"
+            title="Click to edit"
+            onClick={() => setEditing(true)}
+          >
+            {renderInline(block.content)}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -183,8 +279,10 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, au
           }}
           onBlur={(e) => {
             onCommit?.(e.currentTarget.value);
+            setEditing(false);
             setTimeout(() => setSuggest(null), 120);
           }}
+          onFocus={() => setEditing(true)}
           onKeyDown={onKeyDown}
         />
         {matches.length > 0 && (

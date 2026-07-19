@@ -165,6 +165,20 @@
   padding: 2px 0;
 }
 
+/* Read view of a block containing **bold** markup; click to edit. */
+.atlas-block-rendered {
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.6;
+  padding: 2px 0;
+  color: var(--ink);
+  white-space: pre-wrap;
+  cursor: text;
+}
+.atlas-block-rendered strong {
+  font-weight: 700;
+}
+
 .atlas-autocomplete {
   position: absolute;
   z-index: 20;
