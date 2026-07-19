@@ -13,6 +13,8 @@ import "./rag.css";
 export interface ChatPanelProps {
   retriever: Retriever;
   provider: AIProvider;
+  /** Optional opt-in frontier provider for a higher-quality "deep answer". */
+  deepProvider?: AIProvider | null;
   /** Optional hook so a host can highlight the traversal path in the graph. */
   onPath?: (path: string[]) => void;
   /** Optional hook to open a cited source block (click-through). */
@@ -44,6 +46,8 @@ export interface ChatTurn {
   sources: StoredSource[];
   path: string[];
   at: number;
+  /** whether this answer came from the opt-in frontier "deep answer" path. */
+  deep?: boolean;
 }
 
 const HISTORY_KEY = "atlas.chat.history";
@@ -88,6 +92,7 @@ function timeLabel(at: number): string {
 export function ChatPanel({
   retriever,
   provider,
+  deepProvider,
   onPath,
   onSelect,
   getOverview,
@@ -106,9 +111,13 @@ export function ChatPanel({
   }, [history]);
 
   const ask = useCallback(
-    async (q: string) => {
+    async (q: string, deep = false) => {
       const trimmed = q.trim();
       if (!trimmed || busy) return;
+      // "Deep answer" routes generation through the frontier provider; retrieval
+      // and citations are identical, so answers stay grounded and comparable.
+      const useDeep = deep && !!deepProvider;
+      const genProvider = useDeep ? deepProvider! : provider;
       setBusy(true);
       setError(null);
       try {
@@ -141,7 +150,7 @@ export function ChatPanel({
         const ctx = await retriever.retrieve(retrievalQuery);
         setStreaming("");
         let acc = "";
-        const ans = await answer(trimmed, ctx, provider, getOverview?.(), {
+        const ans = await answer(trimmed, ctx, genProvider, getOverview?.(), {
           history: recent,
           themes: getThemes?.(),
           onToken: (chunk) => {
@@ -161,6 +170,7 @@ export function ChatPanel({
           sources,
           path: ans.path,
           at: Date.now(),
+          deep: useDeep,
         };
         setHistory((cur) => [turn, ...cur].slice(0, MAX_TURNS));
         setQuery("");
@@ -172,7 +182,7 @@ export function ChatPanel({
         setStreaming("");
       }
     },
-    [retriever, provider, busy, onPath, getOverview, metaAnswer, getThemes, memoryTurns, history],
+    [retriever, provider, deepProvider, busy, onPath, getOverview, metaAnswer, getThemes, memoryTurns, history],
   );
 
   const clearHistory = useCallback(() => setHistory([]), []);
@@ -197,6 +207,17 @@ export function ChatPanel({
         <button className="rag-submit" type="submit" disabled={busy || !query.trim()}>
           Ask
         </button>
+        {deepProvider && (
+          <button
+            className="rag-deep"
+            type="button"
+            disabled={busy || !query.trim()}
+            onClick={() => void ask(query, true)}
+            title="Answer with your configured frontier model (uses your API key)"
+          >
+            Deep answer
+          </button>
+        )}
       </form>
 
       {busy && !streaming && <div className="rag-status">Consulting the atlas…</div>}
@@ -231,6 +252,7 @@ export function ChatPanel({
               <div className="rag-turn-q" title={timeLabel(turn.at)}>
                 <span className="rag-turn-q-mark">Q</span>
                 {turn.question}
+                {turn.deep && <span className="rag-deep-badge" title="Frontier deep answer">deep</span>}
               </div>
               <div className="rag-answer">
                 <p className="rag-answer-text">{turn.answer}</p>

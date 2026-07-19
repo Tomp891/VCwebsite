@@ -9,6 +9,12 @@ export {
   probeOllama,
 } from "./provider.js";
 export type { OllamaOptions, OllamaProbe } from "./provider.js";
+export {
+  createAnthropicProvider,
+  createOpenAIProvider,
+  createFrontierProvider,
+} from "./frontier.js";
+export type { FrontierEngine, FrontierOptions } from "./frontier.js";
 export { cosineSimilarity } from "./similarity.js";
 export {
   createSuggester,
