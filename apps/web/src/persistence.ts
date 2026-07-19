@@ -112,9 +112,32 @@ function migrate(parsed: Partial<AtlasExport>): AtlasExport {
 function applyPayload(payload: AtlasExport): void {
   localStorage.setItem(STORAGE_KEYS.blocks, JSON.stringify(payload.blocks));
   localStorage.setItem(STORAGE_KEYS.edges, JSON.stringify(payload.edges));
-  if (payload.chatHistory) {
+  // Only overwrite the chat backlog when the incoming payload actually carries
+  // one, so a restore/import can never blank an existing history with `[]`.
+  if (Array.isArray(payload.chatHistory) && payload.chatHistory.length > 0) {
     localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(payload.chatHistory));
   }
+}
+
+/**
+ * If the live chat backlog is empty (cleared tab, or a restore that predated the
+ * chats), pull the richest chatHistory out of the rolling backups so the Ask
+ * history reappears on the next load. Returns how many turns were recovered.
+ */
+export function recoverChatHistory(): number {
+  if (readChatHistory().length > 0) return 0;
+  let best: unknown[] = [];
+  for (const b of readBackups()) {
+    const ch = b.payload?.chatHistory;
+    if (Array.isArray(ch) && ch.length > best.length) best = ch;
+  }
+  if (best.length === 0) return 0;
+  try {
+    localStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(best));
+  } catch {
+    return 0;
+  }
+  return best.length;
 }
 
 export interface BackupMeta {
