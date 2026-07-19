@@ -2,6 +2,18 @@
   "files": [],
   "references": [
     { "path": "packages/contracts" },
+    { "path": "packages/embeddings" },
+    { "path": "packages/editor" },
+    { "path": "packages/graph" },
+    { "path": "packages/graph3d" },
+    { "path": "packages/ai" },
+    { "path": "packages/clustering" },
+    { "path": "packages/db" },
+    { "path": "packages/rag" },
+    { "path": "packages/ranking" },
+    { "path": "packages/autotag" },
+    { "path": "packages/themes" },
+    { "path": "packages/emergent-graph" },
     { "path": "apps/web" }
   ]
 }

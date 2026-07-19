@@ -15,7 +15,9 @@
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 body {
-  background: var(--parchment);
+  /* subtle paper grain over the parchment base */
+  background-color: var(--parchment);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
   color: var(--ink);
   font-family: var(--sans);
   font-size: 14px;
@@ -63,4 +65,351 @@ body {
   font-size: 20px;
   margin: 0 0 4px;
 }
-.brand-sub { color: var(--ink-soft); font-style: italic; font-family: var(--serif); }
+.brand-sub { color: var(--ink-soft); font-style: italic; font-family: var(--serif); margin-bottom: 16px; }
+
+.pane-title-row { display: flex; align-items: center; justify-content: space-between; }
+
+.tabbar { display: flex; gap: 6px; margin-bottom: 12px; }
+.tab, .seg-btn {
+  font-family: var(--serif);
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.tab.active, .seg-btn.active {
+  background: var(--ink);
+  color: var(--parchment);
+  border-color: var(--ink);
+}
+.seg { display: flex; gap: 4px; }
+
+.graph-frame {
+  height: 320px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--parchment-2);
+  position: relative;
+}
+.graph-frame > * { width: 100%; height: 100%; }
+
+/* Expanded ("fullscreen") view: a fixed overlay filling the browser window.
+   The graph inside resizes to it via its ResizeObserver. */
+.graph-frame.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1000;
+  border: none;
+  border-radius: 0;
+  background: var(--parchment-2);
+}
+
+.graph-fs-exit {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: auto;
+  height: auto;
+  z-index: 10;
+  font-family: var(--serif);
+  font-size: 12px;
+  padding: 6px 12px;
+  color: var(--parchment);
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.85;
+}
+.graph-fs-exit:hover { opacity: 1; }
+
+/* Tag filter chips overlaid on the graph (works docked + fullscreen). */
+.graph-filter {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: auto;
+  height: auto;
+  z-index: 8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: calc(100% - 130px);
+}
+.tag-chip {
+  width: auto;
+  height: auto;
+  font-family: var(--sans);
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 8px;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--parchment) 88%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.tag-chip:hover { border-color: var(--pencil); color: var(--ink); }
+.tag-chip.active {
+  color: var(--parchment);
+  background: var(--verdigris);
+  border-color: var(--verdigris);
+}
+.tag-chip--clear {
+  color: var(--ink);
+  background: transparent;
+  border-style: dashed;
+}
+
+/* Floating preview card for the selected graph node. */
+.graph-preview {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  width: auto;
+  height: auto;
+  max-width: min(320px, calc(100% - 24px));
+  z-index: 9;
+  padding: 12px 14px 12px;
+  background: color-mix(in srgb, var(--parchment) 94%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(30, 42, 58, 0.14);
+  backdrop-filter: blur(2px);
+}
+.graph-preview__close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: auto;
+  height: auto;
+  padding: 0 4px;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--pencil);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.graph-preview__close:hover { color: var(--ink); }
+.graph-preview__title {
+  margin: 0 18px 6px 0;
+  font-family: var(--serif);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+}
+.graph-preview__snippet {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+.graph-preview__open {
+  width: auto;
+  height: auto;
+  font-family: var(--serif);
+  font-size: 12px;
+  padding: 5px 12px;
+  color: var(--parchment);
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.graph-preview__open:hover { background: var(--ink-soft); border-color: var(--ink-soft); }
+
+.graph-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--pencil);
+}
+
+/* Export / import controls in the nav pane. */
+.io-bar {
+  display: flex;
+  gap: 6px;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.io-btn {
+  font-family: var(--serif);
+  font-size: 12px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.io-btn:hover { border-color: var(--pencil); color: var(--ink); }
+
+/* Inked-links panel (explicit + AI-accepted edges). */
+.links-panel {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.links-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.links-panel__pair {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-family: var(--serif);
+  font-size: 12.5px;
+  color: var(--ink);
+  padding: 3px 4px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.links-panel__pair:hover { background: rgba(30, 42, 58, 0.06); }
+.links-panel__arrow { color: var(--pencil); }
+.links-panel__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.links-panel__dot--human { background: var(--ink); }
+.links-panel__dot--ai { background: var(--verdigris); }
+.links-panel__remove {
+  background: transparent;
+  border: none;
+  color: var(--pencil);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 6px;
+}
+.links-panel__remove:hover { color: var(--oxblood); }
+
+.atlas-empty {
+  color: var(--pencil);
+  font-family: var(--serif);
+  font-style: italic;
+}
+
+/* Emergent-themes experience (agent 6 wiring). Fills the graph frame with a
+   mode toggle, the hull/temporal view, and the theme review controls. */
+.emergent-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 8px;
+}
+.emergent-panel__modes { flex: 0 0 auto; }
+.emergent-panel__view { flex: 1 1 auto; min-height: 0; position: relative; }
+.emergent-panel__controls {
+  flex: 0 0 auto;
+  max-height: 40%;
+  overflow-y: auto;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+}
+
+/* AI engine status + settings for the Ask panel. */
+.ai-engine {
+  margin-bottom: 8px;
+  font-family: var(--sans);
+  font-size: 12px;
+}
+.ai-engine-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ai-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--pencil);
+}
+.ai-dot--live { background: var(--verdigris, #3c6e5b); }
+.ai-dot--down { background: var(--oxblood, #7b2d26); }
+.ai-dot--mock { background: var(--pencil, #9a8c73); }
+.ai-engine-label { color: var(--ink); }
+.ai-engine-cog {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--oxblood);
+  cursor: pointer;
+  font-size: 11px;
+  text-decoration: underline;
+}
+.ai-engine-sub {
+  color: var(--pencil);
+  margin-top: 3px;
+  line-height: 1.4;
+}
+.ai-engine-warn { color: var(--oxblood); }
+.ai-engine-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.ai-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ai-field > span {
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+  color: var(--oxblood);
+  font-size: 11px;
+}
+.ai-field input,
+.ai-field select {
+  font-family: var(--sans);
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper, #fff);
+  color: var(--ink);
+}
+.ai-engine-test {
+  align-self: flex-start;
+  font-family: var(--sans);
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid var(--verdigris, #3c6e5b);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--verdigris, #3c6e5b);
+  cursor: pointer;
+}
+.ai-engine-test:disabled { opacity: 0.6; cursor: default; }

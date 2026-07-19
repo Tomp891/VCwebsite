@@ -10,6 +10,17 @@
   },
   "dependencies": {
     "@atlas/contracts": "*",
+    "@atlas/editor": "*",
+    "@atlas/graph": "*",
+    "@atlas/graph3d": "*",
+    "@atlas/ai": "*",
+    "@atlas/db": "*",
+    "@atlas/rag": "*",
+    "@atlas/embeddings": "*",
+    "@atlas/ranking": "*",
+    "@atlas/clustering": "*",
+    "@atlas/themes": "*",
+    "@atlas/emergent-graph": "*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

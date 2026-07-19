@@ -1,0 +1,77 @@
+/* Copied design tokens from apps/web/src/theme.css (do not edit that file).
+   Antique-cartography palette for the 2D knowledge graph. */
+.atlas-graph2d {
+  --parchment: #f4ecd8;
+  --parchment-2: #ece0c4;
+  --ink: #1e2a3a;
+  --ink-soft: #48566b;
+  --pencil: #8a7f6b;
+  --oxblood: #7b2d26;
+  --verdigris: #3c6e5b;
+  --line: #d8cbab;
+  --serif: Spectral, Georgia, "Times New Roman", serif;
+
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--parchment);
+}
+
+.atlas-graph2d__hint {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  margin: 0;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 11px;
+  color: var(--pencil);
+  pointer-events: none;
+  user-select: none;
+}
+
+.atlas-graph2d__legend {
+  position: absolute;
+  right: 10px;
+  top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--parchment) 82%, transparent);
+  font-family: var(--serif);
+  font-size: 10.5px;
+  color: var(--ink-soft);
+  pointer-events: none;
+  user-select: none;
+}
+.atlas-graph2d__legend span { display: flex; align-items: center; gap: 6px; }
+.atlas-graph2d__ink {
+  display: inline-block;
+  width: 16px;
+  height: 0;
+  border-top-width: 2px;
+  border-top-style: solid;
+}
+.atlas-graph2d__ink--human { border-top-color: var(--ink); }
+.atlas-graph2d__ink--ai { border-top-color: var(--verdigris); }
+.atlas-graph2d__ink--pencil { border-top-color: var(--pencil); border-top-style: dashed; }
+
+.atlas-graph2d__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 24px;
+  text-align: center;
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--pencil);
+  pointer-events: none;
+}
