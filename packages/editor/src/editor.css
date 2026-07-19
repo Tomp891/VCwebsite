@@ -216,6 +216,32 @@
 .atlas-format-btn:hover {
   background: rgba(244, 236, 216, 0.18);
 }
+
+/* Instant explainer label above a toolbar button on hover (from data-tip). */
+.atlas-format-btn {
+  position: relative;
+}
+.atlas-format-btn:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  margin-bottom: 7px;
+  white-space: nowrap;
+  background: var(--parchment);
+  color: var(--ink);
+  border: 1px solid rgba(30, 42, 58, 0.25);
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 400;
+  font-style: normal;
+  text-decoration: none;
+  box-shadow: 0 2px 6px rgba(30, 42, 58, 0.2);
+  pointer-events: none;
+  z-index: 40;
+}
 .atlas-format-b {
   font-weight: 700;
 }

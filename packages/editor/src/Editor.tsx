@@ -349,19 +349,20 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, on
           <div className="atlas-format-bar" role="toolbar" aria-label="Text formatting">
             {(
               [
-                { label: "B", title: "Bold (⌘B)", marker: "**", cls: " atlas-format-b" },
-                { label: "I", title: "Italic (⌘I)", marker: "*", cls: " atlas-format-i" },
-                { label: "H", title: "Highlight (⌘H)", marker: "==", cls: " atlas-format-h" },
+                { label: "B", title: "Bold · ⌘B", marker: "**", cls: " atlas-format-b" },
+                { label: "I", title: "Italic · ⌘I", marker: "*", cls: " atlas-format-i" },
+                { label: "H", title: "Highlight · ⌘H", marker: "==", cls: " atlas-format-h" },
                 { label: "S", title: "Strikethrough", marker: "~~", cls: " atlas-format-s" },
-                { label: "<>", title: "Code", marker: "`", cls: " atlas-format-code" },
-                { label: "[[]]", title: "Link to page", marker: null, cls: "" },
+                { label: "<>", title: "Inline code", marker: "`", cls: " atlas-format-code" },
+                { label: "[[]]", title: "Link to a page", marker: null, cls: "" },
               ] as Array<{ label: string; title: string; marker: string | null; cls: string }>
             ).map((btn) => (
               <button
                 key={btn.label}
                 type="button"
                 className={`atlas-format-btn${btn.cls}`}
-                title={btn.title}
+                data-tip={btn.title}
+                aria-label={btn.title}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   if (btn.marker !== null) applyFormat(btn.marker);
@@ -377,7 +378,8 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, on
                 key={lvl}
                 type="button"
                 className={`atlas-format-btn${heading === lvl ? " is-active" : ""}`}
-                title={`Heading ${lvl}`}
+                data-tip={`Heading ${lvl}${heading === lvl ? " · click to remove" : ""}`}
+                aria-label={`Heading ${lvl}`}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   applyHeading(lvl);
