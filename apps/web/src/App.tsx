@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { createLocalStore, Editor } from "@atlas/editor";
+import { createLocalStore, Editor, listDailyNotes } from "@atlas/editor";
 import { Graph2D } from "@atlas/graph";
 import { SuggestionsPanel } from "@atlas/ai";
 import { DatabaseView, NavTree, allTags, blockTags } from "@atlas/db";
@@ -27,6 +27,8 @@ import { GraphPreview } from "./GraphPreview.js";
 import { TagSuggestionsPanel } from "./TagSuggestionsPanel.js";
 import { EmergentPanel } from "./emergent/EmergentPanel.js";
 import { AiSettings } from "./ai/AiSettings.js";
+import { SearchOverlay } from "./SearchOverlay.js";
+import { JournalNav, JOURNAL_NAV_CAP } from "./JournalNav.js";
 import { useAiProvider } from "./ai/useAiProvider.js";
 
 // 3D pulls in three.js + 3d-force-graph (~large). Load it only when the Atlas
@@ -86,7 +88,26 @@ export function App() {
   const [centerTab, setCenterTab] = useState<CenterTab>("page");
   const [graphMode, setGraphMode] = useState<GraphMode>("2d");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [navCollapsed, setNavCollapsed] = useState(
+    () => localStorage.getItem("atlas.nav.collapsed") === "1",
+  );
+  useEffect(() => {
+    localStorage.setItem("atlas.nav.collapsed", navCollapsed ? "1" : "0");
+  }, [navCollapsed]);
   const [activeTags, setActiveTags] = useState<string[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Cmd+K / Ctrl+K opens the full-text search overlay.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen((v) => !v);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   // AI engine (local Ollama with mock fallback) shared by suggestions + Ask.
   const ai = useAiProvider();
@@ -237,6 +258,13 @@ export function App() {
   }, [isFullscreen]);
 
   const blocks = useMemo(() => store.listBlocks(), [version]);
+  // Recent daily notes get their own nav section; hide them from Pages so the
+  // list isn't flooded (older ones remain reachable via Pages).
+  const journalNotes = useMemo(
+    () => listDailyNotes(blocks).slice(0, JOURNAL_NAV_CAP),
+    [blocks],
+  );
+  const journalIds = useMemo(() => journalNotes.map((n) => n.id), [journalNotes]);
   const graphData = useMemo(
     () => storeToGraphData(blocks, store.listEdges()),
     [blocks],
@@ -290,19 +318,48 @@ export function App() {
   }, [path]);
 
   return (
-    <div className="app-shell">
-      <aside className="pane pane-nav">
+    <div className={navCollapsed ? "app-shell nav-collapsed" : "app-shell"}>
+      <aside className={navCollapsed ? "pane pane-nav is-collapsed" : "pane pane-nav"}>
+        <button
+          type="button"
+          className="nav-toggle"
+          onClick={() => setNavCollapsed((c) => !c)}
+          title={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={navCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {navCollapsed ? "»" : "«"}
+        </button>
+        {!navCollapsed && (
+          <>
         <h1 className="brand">Atlas</h1>
         <div className="brand-sub">a cartography of thought</div>
+        <button
+          type="button"
+          className="search-trigger"
+          onClick={() => setSearchOpen(true)}
+          title="Search all pages and blocks (Ctrl+K / Cmd+K)"
+        >
+          <span>Search…</span>
+          <kbd className="search-kbd">⌘K</kbd>
+        </button>
+        <JournalNav
+          store={store}
+          notes={journalNotes}
+          activeId={selectedPageId}
+          onOpen={setSelectedId}
+        />
         <NavTree
           store={store}
           activeId={selectedPageId}
           onOpen={setSelectedId}
           activeTags={activeTags}
           onTagToggle={toggleTag}
+          excludeIds={journalIds}
         />
 
         <DataSafety store={store} version={version} />
+          </>
+        )}
       </aside>
 
       <main className="pane pane-editor">
@@ -453,6 +510,14 @@ export function App() {
           getThemes={() => ragRef.current.themeSummaries}
         />
       </aside>
+
+      {searchOpen && (
+        <SearchOverlay
+          store={store}
+          onOpen={setSelectedId}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
     </div>
   );
 }

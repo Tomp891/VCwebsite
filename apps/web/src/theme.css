@@ -29,6 +29,40 @@ body {
   height: 100%;
   min-height: 0;
 }
+.app-shell.nav-collapsed {
+  grid-template-columns: 34px 1fr 380px;
+}
+
+/* Collapse/expand toggle for the left navigation pane. */
+.nav-toggle {
+  position: absolute;
+  top: 10px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--parchment);
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.nav-toggle:hover {
+  background: var(--parchment-2);
+}
+.pane-nav {
+  position: relative;
+}
+.pane-nav.is-collapsed {
+  padding: 8px 4px;
+  overflow: hidden;
+}
+.pane-nav.is-collapsed .nav-toggle {
+  right: 50%;
+  transform: translateX(50%);
+}
 
 .pane {
   min-height: 0;
@@ -66,6 +100,48 @@ body {
   margin: 0 0 4px;
 }
 .brand-sub { color: var(--ink-soft); font-style: italic; font-family: var(--serif); margin-bottom: 16px; }
+
+/* Journal — Today button + collapsible list of recent daily notes. */
+.journal-nav { margin-bottom: 6px; }
+.journal-today {
+  display: block;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 5px 10px;
+  font-family: var(--serif);
+  font-size: 13px;
+  text-align: left;
+  background: var(--parchment);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.journal-today:hover { border-color: var(--pencil); background: var(--parchment-2); }
+.journal-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 2px 0 6px;
+  font-family: var(--serif);
+  font-variant: small-caps;
+  letter-spacing: 0.08em;
+  font-size: 12px;
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+  cursor: pointer;
+  text-align: left;
+}
+.journal-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--pencil);
+  font-variant: normal;
+}
 
 .pane-title-row { display: flex; align-items: center; justify-content: space-between; }
 
@@ -305,6 +381,107 @@ body {
 .io-backup-meta {
   font-size: 10px;
   color: var(--ink-soft);
+}
+
+/* Full-text search: nav trigger + Cmd/Ctrl+K overlay. */
+.search-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 5px 10px;
+  font-family: var(--serif);
+  font-size: 12px;
+  color: var(--ink-soft);
+  background: var(--parchment);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.search-trigger:hover { border-color: var(--pencil); color: var(--ink); }
+.search-kbd {
+  font-family: var(--sans);
+  font-size: 10px;
+  color: var(--pencil);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 1px 4px;
+  background: transparent;
+}
+
+.search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 12vh;
+  background: rgba(30, 42, 58, 0.28);
+}
+.search-panel {
+  width: min(560px, calc(100% - 32px));
+  background: var(--parchment);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(30, 42, 58, 0.25);
+  overflow: hidden;
+}
+.search-input {
+  width: 100%;
+  padding: 12px 14px;
+  font-family: var(--serif);
+  font-size: 15px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+.search-input::placeholder { color: var(--pencil); font-style: italic; }
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  max-height: 50vh;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+}
+.search-result {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.search-result.active { background: var(--parchment-2); }
+.search-result__title {
+  font-family: var(--serif);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.search-result__snippet {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+.search-mark {
+  background: color-mix(in srgb, var(--verdigris) 25%, transparent);
+  color: var(--ink);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.search-empty {
+  padding: 10px 12px;
+  font-family: var(--serif);
+  font-style: italic;
+  color: var(--pencil);
 }
 
 /* Inked-links panel (explicit + AI-accepted edges). */
