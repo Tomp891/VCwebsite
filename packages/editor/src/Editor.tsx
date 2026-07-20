@@ -27,20 +27,53 @@ function activeWikilink(value: string, caret: number): WikilinkMatch | null {
   return { query: between, start: open + 2 };
 }
 
+/** Block kinds the outliner renders distinctly (everything else = a bullet). */
+export type BlockKind = "text" | "bullet" | "heading" | "todo" | "quote";
+
+/**
+ * Markdown shortcut: a prefix typed at the very start of a block converts it to
+ * the matching kind and strips the prefix. Returns the new kind + content, or
+ * null when nothing matched. Only fires while the block is a plain text/bullet
+ * so it never fights an already-styled block.
+ */
+export function markdownShortcut(
+  kind: BlockKind,
+  content: string,
+): { type: BlockKind; content: string } | null {
+  if (kind !== "text" && kind !== "bullet") return null;
+  const rules: Array<[RegExp, BlockKind]> = [
+    [/^(#{1,3})\s(.*)$/s, "heading"],
+    [/^(>)\s(.*)$/s, "quote"],
+    [/^(\[\]|\[ \]|\[x\])\s(.*)$/s, "todo"],
+    [/^([-*])\s(.*)$/s, "bullet"],
+  ];
+  for (const [re, type] of rules) {
+    const m = re.exec(content);
+    if (m) return { type, content: m[2] };
+  }
+  return null;
+}
+
 interface BlockRowProps {
   block: Block;
   pageTitles: string[];
+  depth: number;
   onChange: (content: string) => void;
   /** Fired on blur with the final content (used to harvest #hashtags). */
   onCommit?: (content: string) => void;
   /** Split at the caret: text before stays, text after seeds a new block. */
   onEnter: (before: string, after: string) => void;
   onDelete: () => void;
+  /** Tab / Shift+Tab: nest under the previous sibling / lift out of the parent. */
+  onIndent: () => void;
+  onOutdent: () => void;
+  /** Toggle a todo block's done state. */
+  onToggleDone: () => void;
   /** Focus this row's textarea (caret at start) once, after it mounts. */
   autoFocus?: boolean;
 }
 
-function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, autoFocus }: BlockRowProps): JSX.Element {
+function BlockRow({ block, pageTitles, depth, onChange, onCommit, onEnter, onDelete, onIndent, onOutdent, onToggleDone, autoFocus }: BlockRowProps): JSX.Element {
   const ref = useRef<HTMLTextAreaElement>(null);
   // Bridges the async re-render gap between two rapid Enter presses: holds the
   // value/caret we just produced so the next keydown reads it instead of the
@@ -155,15 +188,45 @@ function BlockRow({ block, pageTitles, onChange, onCommit, onEnter, onDelete, au
       });
       return;
     }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      if (e.shiftKey) onOutdent();
+      else onIndent();
+      return;
+    }
     if (e.key === "Backspace" && block.content === "") {
       e.preventDefault();
       onDelete();
     }
   }
 
+  const kind = (block.type as BlockKind) ?? "text";
+  const done = block.props.done === true;
+
   return (
-    <div className="atlas-block-row">
-      <span className="atlas-bullet">•</span>
+    <div
+      className={`atlas-block-row atlas-block-row--${kind}${done ? " is-done" : ""}`}
+      style={{ marginLeft: depth * 22 }}
+    >
+      {kind === "todo" ? (
+        <input
+          type="checkbox"
+          className="atlas-todo-check"
+          checked={done}
+          onChange={onToggleDone}
+          aria-label="Toggle done"
+        />
+      ) : kind === "heading" ? (
+        <span className="atlas-bullet atlas-bullet--heading" aria-hidden="true">
+          #
+        </span>
+      ) : kind === "quote" ? (
+        <span className="atlas-bullet atlas-bullet--quote" aria-hidden="true">
+          ▏
+        </span>
+      ) : (
+        <span className="atlas-bullet">•</span>
+      )}
       <div className="atlas-block-field">
         <textarea
           ref={ref}
@@ -302,6 +365,13 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
     [blocks, currentId],
   );
 
+  // Direct children of any block, in order — the outliner works on subtrees.
+  const siblingsOf = useCallback(
+    (parentId: BlockId | null): Block[] =>
+      blocks.filter((b) => b.parentId === parentId).sort((a, b) => a.order - b.order),
+    [blocks],
+  );
+
   // Backlinks: one row per source *page*, deduped, with a snippet from the
   // linking block. Walks parentId so a link inside a child block still credits
   // its containing page.
@@ -345,19 +415,21 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
   }
 
   // Enter inside a block: keep `before` in the current block, push `after` into
-  // a new block right below it, then focus the new block.
+  // a new sibling right below it (same parent + depth), then focus it.
   function splitBlock(afterId: BlockId, before: string, after: string): void {
-    if (!currentId) return;
-    const idx = children.findIndex((c) => c.id === afterId);
+    const block = store.getBlock(afterId);
+    if (!block) return;
+    const sibs = siblingsOf(block.parentId);
+    const idx = sibs.findIndex((c) => c.id === afterId);
     if (idx === -1) return;
     store.upsertBlock({ id: afterId, content: before });
     // Make room: bump the order of every sibling below the split point.
-    for (const sib of children.slice(idx + 1)) {
+    for (const sib of sibs.slice(idx + 1)) {
       store.upsertBlock({ id: sib.id, order: sib.order + 1 });
     }
     const created = store.createBlock({
-      parentId: currentId,
-      order: children[idx].order + 1,
+      parentId: block.parentId,
+      order: block.order + 1,
       type: "text",
       content: after,
       props: {},
@@ -367,10 +439,60 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
 
   // Backspace on an empty block: delete it and focus the previous sibling.
   function removeChild(id: BlockId): void {
-    const idx = children.findIndex((c) => c.id === id);
+    const block = store.getBlock(id);
+    if (!block) return;
+    const sibs = siblingsOf(block.parentId);
+    const idx = sibs.findIndex((c) => c.id === id);
     store.deleteBlock(id);
-    const prev = idx > 0 ? children[idx - 1] : null;
+    const prev = idx > 0 ? sibs[idx - 1] : null;
     if (prev) setFocusId(prev.id);
+  }
+
+  // Tab: nest a block under its previous sibling (becomes that sibling's last
+  // child). No previous sibling → nothing to nest under.
+  function indentBlock(id: BlockId): void {
+    const block = store.getBlock(id);
+    if (!block) return;
+    const sibs = siblingsOf(block.parentId);
+    const idx = sibs.findIndex((c) => c.id === id);
+    if (idx <= 0) return;
+    const newParent = sibs[idx - 1];
+    const grandKids = siblingsOf(newParent.id);
+    const order = grandKids.length ? grandKids[grandKids.length - 1].order + 1 : 0;
+    store.upsertBlock({ id, parentId: newParent.id, order });
+    setFocusId(id);
+  }
+
+  // Shift+Tab: lift a block out of its parent so it sits right after the parent
+  // among the grandparent's children. Page-level blocks can't outdent further.
+  function outdentBlock(id: BlockId): void {
+    const block = store.getBlock(id);
+    if (!block || block.parentId === null) return;
+    const parent = store.getBlock(block.parentId);
+    if (!parent || parent.type === "page") return;
+    const uncles = siblingsOf(parent.parentId);
+    // Make room after the parent, then drop the block in just below it.
+    for (const u of uncles) {
+      if (u.order > parent.order) store.upsertBlock({ id: u.id, order: u.order + 1 });
+    }
+    store.upsertBlock({ id, parentId: parent.parentId, order: parent.order + 1 });
+    setFocusId(id);
+  }
+
+  function toggleDone(id: BlockId): void {
+    const block = store.getBlock(id);
+    if (!block) return;
+    store.upsertBlock({ id, props: { ...block.props, done: block.props.done !== true } });
+  }
+
+  // Apply typed content, honouring a leading markdown shortcut (# / > / [] / -).
+  function applyContent(block: Block, content: string): void {
+    const shortcut = markdownShortcut((block.type as BlockKind) ?? "text", content);
+    if (shortcut) {
+      store.upsertBlock({ id: block.id, type: shortcut.type, content: shortcut.content });
+    } else {
+      store.upsertBlock({ id: block.id, content });
+    }
   }
 
   const pageTags = current ? blockTagList(current.props) : [];
@@ -398,6 +520,26 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
     },
     [store, current],
   );
+
+  // Depth-first render of a block subtree: each block, then its children indented.
+  const renderRows = (parentId: BlockId | null, depth: number): JSX.Element[] =>
+    siblingsOf(parentId).flatMap((b) => [
+      <BlockRow
+        key={b.id}
+        block={b}
+        depth={depth}
+        pageTitles={pageTitles}
+        autoFocus={b.id === focusId}
+        onChange={(content) => applyContent(b, content)}
+        onCommit={(content) => mergeHashtags(content)}
+        onEnter={(before, after) => splitBlock(b.id, before, after)}
+        onDelete={() => removeChild(b.id)}
+        onIndent={() => indentBlock(b.id)}
+        onOutdent={() => outdentBlock(b.id)}
+        onToggleDone={() => toggleDone(b.id)}
+      />,
+      ...renderRows(b.id, depth + 1),
+    ]);
 
   return (
     <div className="atlas-editor">
@@ -449,20 +591,7 @@ export function Editor({ store, pageId, onOpenPage }: EditorProps): JSX.Element 
               onAdd={(t) => setPageTags(unionTags(pageTags, [t]))}
               onRemove={(t) => setPageTags(pageTags.filter((x) => x !== t))}
             />
-            <div className="atlas-blocks">
-              {children.map((b) => (
-                <BlockRow
-                  key={b.id}
-                  block={b}
-                  pageTitles={pageTitles}
-                  autoFocus={b.id === focusId}
-                  onChange={(content) => store.upsertBlock({ id: b.id, content })}
-                  onCommit={(content) => mergeHashtags(content)}
-                  onEnter={(before, after) => splitBlock(b.id, before, after)}
-                  onDelete={() => removeChild(b.id)}
-                />
-              ))}
-            </div>
+            <div className="atlas-blocks">{renderRows(currentId, 0)}</div>
             <button className="atlas-btn atlas-add-block" onClick={newChild}>
               + New block
             </button>
