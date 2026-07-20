@@ -14,6 +14,7 @@
     { "path": "packages/autotag" },
     { "path": "packages/themes" },
     { "path": "packages/emergent-graph" },
+    { "path": "packages/mcp-server" },
     { "path": "apps/web" }
   ]
 }
