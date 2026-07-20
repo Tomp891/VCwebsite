@@ -287,3 +287,101 @@
   font-family: var(--serif);
   font-style: italic;
 }
+
+/* Rendered view shown when a block has inline marks and is not being edited. */
+.atlas-block-rendered {
+  white-space: pre-wrap;
+  cursor: text;
+  color: var(--ink);
+}
+.atlas-block-rendered strong {
+  font-weight: 700;
+}
+.atlas-block-rendered em {
+  font-style: italic;
+}
+.atlas-block-rendered mark {
+  background: rgba(214, 168, 45, 0.35);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.atlas-block-rendered s {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+.atlas-block-rendered code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.88em;
+  background: rgba(30, 42, 58, 0.08);
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+/* Floating formatting toolbar shown while text is selected in a block. */
+.atlas-format-bar {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  bottom: 100%;
+  margin-bottom: 4px;
+  display: flex;
+  gap: 2px;
+  background: var(--ink);
+  border-radius: 6px;
+  padding: 3px 4px;
+  box-shadow: 0 2px 8px rgba(30, 42, 58, 0.35);
+}
+.atlas-format-btn {
+  position: relative;
+  background: transparent;
+  border: none;
+  color: var(--parchment);
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.atlas-format-btn:hover {
+  background: rgba(244, 236, 216, 0.18);
+}
+/* Instant explainer label above a toolbar button on hover (from data-tip). */
+.atlas-format-btn:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 50%;
+  bottom: 100%;
+  transform: translateX(-50%);
+  margin-bottom: 7px;
+  white-space: nowrap;
+  background: var(--parchment);
+  color: var(--ink);
+  border: 1px solid rgba(30, 42, 58, 0.25);
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-weight: 400;
+  font-style: normal;
+  text-decoration: none;
+  box-shadow: 0 2px 6px rgba(30, 42, 58, 0.2);
+  pointer-events: none;
+  z-index: 40;
+}
+.atlas-format-b {
+  font-weight: 700;
+}
+.atlas-format-i {
+  font-style: italic;
+}
+.atlas-format-h {
+  background: rgba(214, 168, 45, 0.45);
+}
+.atlas-format-s {
+  text-decoration: line-through;
+}
+.atlas-format-code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+}
