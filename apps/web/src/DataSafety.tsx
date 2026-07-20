@@ -9,6 +9,12 @@ import {
   restoreBackup,
   type BackupMeta,
 } from "./persistence.js";
+import {
+  pickLiveFile,
+  supportsLiveSync,
+  writeLiveFile,
+  type LiveFileHandle,
+} from "./liveSync.js";
 
 /** Auto-backup at most this often (ms) while the user keeps editing. */
 const AUTO_BACKUP_INTERVAL = 5 * 60 * 1000;
@@ -42,8 +48,43 @@ export function DataSafety({ store, version }: DataSafetyProps): JSX.Element {
   const [open, setOpen] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const lastAuto = useRef<number>(backups[0]?.at ?? 0);
+  const liveHandle = useRef<LiveFileHandle | null>(null);
+  const [liveName, setLiveName] = useState<string | null>(null);
 
   const refresh = useCallback(() => setBackups(listBackups()), []);
+
+  const startLiveSync = useCallback(async () => {
+    try {
+      const handle = await pickLiveFile();
+      if (!handle) return;
+      liveHandle.current = handle;
+      await writeLiveFile(handle, store);
+      setLiveName(handle.name);
+    } catch (err) {
+      // AbortError = user cancelled the picker; ignore.
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      alert(`Live sync failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [store]);
+
+  const stopLiveSync = useCallback(() => {
+    liveHandle.current = null;
+    setLiveName(null);
+  }, []);
+
+  // Mirror the store to the live file after each edit while live sync is on.
+  useEffect(() => {
+    const handle = liveHandle.current;
+    if (!handle) return;
+    const t = setTimeout(() => {
+      void writeLiveFile(handle, store).catch(() => {
+        // Lost access (revoked permission / removed file): stop silently.
+        liveHandle.current = null;
+        setLiveName(null);
+      });
+    }, 800);
+    return () => clearTimeout(t);
+  }, [version, store]);
 
   const backupNow = useCallback(
     (reason = "manual") => {
@@ -120,6 +161,24 @@ export function DataSafety({ store, version }: DataSafetyProps): JSX.Element {
             Restore ▾
           </button>
         )}
+        {supportsLiveSync() &&
+          (liveName ? (
+            <button
+              className="io-btn io-btn-live"
+              onClick={stopLiveSync}
+              title={`Live-syncing to ${liveName} for the local MCP server. Click to stop.`}
+            >
+              ● Live: {liveName}
+            </button>
+          ) : (
+            <button
+              className="io-btn"
+              onClick={() => void startLiveSync()}
+              title="Continuously mirror your notes to a local file the Atlas MCP server can read (for Claude Desktop)."
+            >
+              Live sync…
+            </button>
+          ))}
         <input
           ref={fileRef}
           type="file"

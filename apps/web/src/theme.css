@@ -352,6 +352,8 @@ body {
   cursor: pointer;
 }
 .io-btn:hover { border-color: var(--pencil); color: var(--ink); }
+.io-btn-live { color: #5a8f5a; border-color: #5a8f5a; }
+.io-btn-live:hover { color: #5a8f5a; border-color: #5a8f5a; }
 .io-backups {
   list-style: none;
   margin: 0;
