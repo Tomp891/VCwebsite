@@ -18,3 +18,13 @@ export type { Scope } from "./intent.js";
 export { ChatPanel } from "./ChatPanel.js";
 export type { ChatPanelProps } from "./ChatPanel.js";
 export { Demo, mockProvider, createMockStore } from "./Demo.js";
+export {
+  runEval,
+  formatReport,
+  precisionAtK,
+  recallAtK,
+  hitAtK,
+  reciprocalRank,
+} from "./eval.js";
+export type { EvalCase, EvalDataset, CaseMetrics, EvalResult } from "./eval.js";
+export { mockEvalDataset } from "./eval.fixture.js";
