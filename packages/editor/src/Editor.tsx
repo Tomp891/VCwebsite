@@ -27,6 +27,71 @@ function activeWikilink(value: string, caret: number): WikilinkMatch | null {
   return { query: between, start: open + 2 };
 }
 
+/** Render inline markdown: `**bold**`, `*italic*`, `==highlight==`,
+ *  `~~strikethrough~~` and `` `code` ``. */
+export function renderInline(content: string): Array<JSX.Element | string> {
+  const out: Array<JSX.Element | string> = [];
+  const re =
+    /\*\*([^*\n][^*]*?)\*\*|\*([^*\n]+?)\*|==([^=\n]+?)==|~~([^~\n]+?)~~|`([^`\n]+?)`/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let key = 0;
+  while ((m = re.exec(content)) !== null) {
+    if (m.index > last) out.push(content.slice(last, m.index));
+    if (m[1] !== undefined) out.push(<strong key={key++}>{m[1]}</strong>);
+    else if (m[2] !== undefined) out.push(<em key={key++}>{m[2]}</em>);
+    else if (m[3] !== undefined) out.push(<mark key={key++}>{m[3]}</mark>);
+    else if (m[4] !== undefined) out.push(<s key={key++}>{m[4]}</s>);
+    else out.push(<code key={key++}>{m[5]}</code>);
+    last = m.index + m[0].length;
+  }
+  if (last < content.length) out.push(content.slice(last));
+  return out;
+}
+
+/** True when a block contains any inline mark that should render styled. */
+const INLINE_MARKUP =
+  /\*\*[^*\n][^*]*?\*\*|\*[^*\n]+?\*|==[^=\n]+?==|~~[^~\n]+?~~|`[^`\n]+?`/;
+
+/** Wrap the selection (or the word at the caret) in `marker`, or unwrap it. */
+export function toggleWrap(
+  value: string,
+  selStart: number,
+  selEnd: number,
+  marker: string,
+): { value: string; selStart: number; selEnd: number } {
+  let start = selStart;
+  let end = selEnd;
+  if (start === end) {
+    // No selection: use the word around the caret.
+    while (start > 0 && !/\s/.test(value[start - 1])) start--;
+    while (end < value.length && !/\s/.test(value[end])) end++;
+  }
+  const n = marker.length;
+  const before = value.slice(0, start);
+  const inner = value.slice(start, end);
+  const after = value.slice(end);
+  if (before.endsWith(marker) && after.startsWith(marker)) {
+    return {
+      value: `${before.slice(0, -n)}${inner}${after.slice(n)}`,
+      selStart: start - n,
+      selEnd: end - n,
+    };
+  }
+  if (inner.startsWith(marker) && inner.endsWith(marker) && inner.length >= 2 * n) {
+    return {
+      value: `${before}${inner.slice(n, -n)}${after}`,
+      selStart: start,
+      selEnd: end - 2 * n,
+    };
+  }
+  return {
+    value: `${before}${marker}${inner}${marker}${after}`,
+    selStart: start + n,
+    selEnd: end + n,
+  };
+}
+
 /** Block kinds the outliner renders distinctly (everything else = a bullet). */
 export type BlockKind = "text" | "bullet" | "heading" | "todo" | "quote";
 
@@ -81,13 +146,29 @@ function BlockRow({ block, pageTitles, depth, onChange, onCommit, onEnter, onDel
   const pending = useRef<{ value: string; caret: number } | null>(null);
   const [suggest, setSuggest] = useState<WikilinkMatch | null>(null);
   const [active, setActive] = useState(0);
+  // Blocks with inline marks show a rendered view while not being edited;
+  // clicking (or auto-focus) swaps back to the textarea. A floating toolbar
+  // appears whenever text is selected.
+  const [editing, setEditing] = useState(Boolean(autoFocus));
+  const [hasSelection, setHasSelection] = useState(false);
+  const hasMarkup = INLINE_MARKUP.test(block.content);
+  const showRendered = hasMarkup && !editing;
 
   useEffect(() => {
+    if (autoFocus) setEditing(true);
     if (autoFocus && ref.current) {
       ref.current.focus();
       ref.current.setSelectionRange(0, 0);
     }
   }, [autoFocus]);
+
+  useEffect(() => {
+    if (editing && !showRendered && ref.current && document.activeElement !== ref.current) {
+      const end = block.content.length;
+      ref.current.focus();
+      ref.current.setSelectionRange(end, end);
+    }
+  }, [editing, showRendered, block.content]);
 
   // Grow the textarea to fit its content so a bullet can hold multiple lines
   // (one bullet per topic) instead of scrolling inside a single row. Runs
@@ -125,6 +206,38 @@ function BlockRow({ block, pageTitles, depth, onChange, onCommit, onEnter, onDel
       el.setSelectionRange(caret, caret);
     });
   }
+
+  function applyFormat(marker: string): void {
+    const el = ref.current;
+    if (!el) return;
+    const res = toggleWrap(el.value, el.selectionStart ?? 0, el.selectionEnd ?? 0, marker);
+    el.value = res.value;
+    el.focus();
+    el.setSelectionRange(res.selStart, res.selEnd);
+    autoGrow();
+    pending.current = null;
+    onChange(res.value);
+  }
+
+  function wrapLink(): void {
+    const el = ref.current;
+    if (!el) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    const next = `${el.value.slice(0, start)}[[${el.value.slice(start, end)}]]${el.value.slice(end)}`;
+    el.value = next;
+    el.focus();
+    el.setSelectionRange(start + 2, end + 2);
+    autoGrow();
+    pending.current = null;
+    onChange(next);
+  }
+
+  const updateSelection = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    setHasSelection((el.selectionStart ?? 0) !== (el.selectionEnd ?? 0));
+  }, []);
 
   function onKeyDown(e: ReactKeyboardEvent<HTMLTextAreaElement>): void {
     if (matches.length > 0) {
@@ -194,6 +307,11 @@ function BlockRow({ block, pageTitles, depth, onChange, onCommit, onEnter, onDel
       else onIndent();
       return;
     }
+    if ((e.metaKey || e.ctrlKey) && (e.key === "b" || e.key === "i" || e.key === "h")) {
+      e.preventDefault();
+      applyFormat(e.key === "b" ? "**" : e.key === "i" ? "*" : "==");
+      return;
+    }
     if (e.key === "Backspace" && block.content === "") {
       e.preventDefault();
       onDelete();
@@ -228,43 +346,91 @@ function BlockRow({ block, pageTitles, depth, onChange, onCommit, onEnter, onDel
         <span className="atlas-bullet">•</span>
       )}
       <div className="atlas-block-field">
-        <textarea
-          ref={ref}
-          className="atlas-block-input"
-          value={block.content}
-          rows={1}
-          placeholder="Write a block… use [[ to link"
-          onChange={(e) => {
-            pending.current = null;
-            onChange(e.target.value);
-            refresh(e.target);
-          }}
-          onKeyUp={(e) => refresh(e.currentTarget)}
-          onClick={(e) => {
-            pending.current = null;
-            refresh(e.currentTarget);
-          }}
-          onBlur={(e) => {
-            onCommit?.(e.currentTarget.value);
-            setTimeout(() => setSuggest(null), 120);
-          }}
-          onKeyDown={onKeyDown}
-        />
-        {matches.length > 0 && (
-          <ul className="atlas-autocomplete">
-            {matches.map((title, i) => (
-              <li
-                key={title}
-                className={i === active ? "is-active" : undefined}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  accept(title);
-                }}
-              >
-                {title}
-              </li>
-            ))}
-          </ul>
+        {showRendered ? (
+          <div
+            className="atlas-block-input atlas-block-rendered"
+            title="Click to edit"
+            onClick={() => setEditing(true)}
+          >
+            {renderInline(block.content)}
+          </div>
+        ) : (
+          <>
+            {hasSelection && (
+              <div className="atlas-format-bar" role="toolbar" aria-label="Text formatting">
+                {(
+                  [
+                    { label: "B", title: "Bold · ⌘B", marker: "**", cls: " atlas-format-b" },
+                    { label: "I", title: "Italic · ⌘I", marker: "*", cls: " atlas-format-i" },
+                    { label: "H", title: "Highlight · ⌘H", marker: "==", cls: " atlas-format-h" },
+                    { label: "S", title: "Strikethrough", marker: "~~", cls: " atlas-format-s" },
+                    { label: "<>", title: "Inline code", marker: "`", cls: " atlas-format-code" },
+                    { label: "[[]]", title: "Link to a page", marker: null, cls: "" },
+                  ] as Array<{ label: string; title: string; marker: string | null; cls: string }>
+                ).map((btn) => (
+                  <button
+                    key={btn.label}
+                    type="button"
+                    className={`atlas-format-btn${btn.cls}`}
+                    data-tip={btn.title}
+                    aria-label={btn.title}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      if (btn.marker !== null) applyFormat(btn.marker);
+                      else wrapLink();
+                    }}
+                  >
+                    {btn.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            <textarea
+              ref={ref}
+              className="atlas-block-input"
+              value={block.content}
+              rows={1}
+              placeholder="Write a block… use [[ to link"
+              onChange={(e) => {
+                pending.current = null;
+                onChange(e.target.value);
+                refresh(e.target);
+              }}
+              onKeyUp={(e) => {
+                refresh(e.currentTarget);
+                updateSelection();
+              }}
+              onClick={(e) => {
+                pending.current = null;
+                refresh(e.currentTarget);
+              }}
+              onSelect={updateSelection}
+              onFocus={() => setEditing(true)}
+              onBlur={(e) => {
+                onCommit?.(e.currentTarget.value);
+                setEditing(false);
+                setHasSelection(false);
+                setTimeout(() => setSuggest(null), 120);
+              }}
+              onKeyDown={onKeyDown}
+            />
+            {matches.length > 0 && (
+              <ul className="atlas-autocomplete">
+                {matches.map((title, i) => (
+                  <li
+                    key={title}
+                    className={i === active ? "is-active" : undefined}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      accept(title);
+                    }}
+                  >
+                    {title}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </div>
     </div>
